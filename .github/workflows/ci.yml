@@ -27,7 +27,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
 
       - name: Cache Crystal Build Cache
         uses: actions/cache@v4

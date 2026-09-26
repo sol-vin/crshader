@@ -115,7 +115,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Cache Crystal Build Cache
         uses: actions/cache@v4
         with:
@@ -141,7 +141,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Cache Crystal Build Cache
         uses: actions/cache@v4
         with:
@@ -166,7 +166,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Cache Crystal Build Cache
         uses: actions/cache@v4
         with:
@@ -232,7 +232,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Install Build Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y lld libgc-dev wget unzip
@@ -324,7 +324,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Setup Godot Engine
         uses: appsinacup/action_setup_godot@main
         with:
@@ -398,7 +398,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Setup Godot Engine
         uses: appsinacup/action_setup_godot@main
         with:
@@ -516,7 +516,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Run Test Suites
         run: |
           shards install || true
@@ -537,7 +537,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Run Test Suites
         run: |
           shards install || true
@@ -558,7 +558,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Run Test Suites
         shell: pwsh
         run: |
@@ -943,7 +943,7 @@ jobs:
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
         with:
-          crystal: latest
+          crystal: 1.21.0
       - name: Generate API Documentation
         continue-on-error: true
         run: |
