@@ -7,4 +7,5 @@ require "./tree_shaker_spec"
 require "./advanced_features_spec"
 require "./examples_spec"
 require "./stubs_spec"
+require "./crshader_resource_spec"
 

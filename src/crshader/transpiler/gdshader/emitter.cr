@@ -112,15 +112,21 @@ module CrShader
                       else                                "uniform"
                       end
 
-        utype = TypeInfo.resolve(u.type_name, ShaderTarget::GDShader)
-        @symbol_table.register_global(u.name, utype)
+        if u.is_var_array
+          array_len = u.array_size || "16"
+          @io << "const int #{u.name}_size = #{array_len};\n"
+          @symbol_table.register_global("#{u.name}_size", "int")
+        end
 
+        utype = TypeInfo.resolve(u.type_name, ShaderTarget::GDShader)
         array_str = u.array_size ? "[#{u.array_size}]" : ""
+        @symbol_table.register_global(u.name, "#{utype}#{array_str}")
+
         @io << "#{qual_prefix} #{utype} #{u.name}#{array_str}"
         if !u.hints.empty?
           @io << " : " << u.hints.join(", ")
         end
-        if default_val = u.default_value
+        if (default_val = u.default_value) && !u.is_var_array && u.array_size.nil?
           @io << " = "
           default_val.accept(self)
         end

@@ -160,9 +160,13 @@ module CrShader
     private def emit_uniforms
       return if @program.uniforms.empty?
       @program.uniforms.each_with_index do |u, idx|
+        if u.is_var_array
+          @io << "const int #{u.name}_size = #{u.array_size};\n"
+          @symbol_table.register_global("#{u.name}_size", "int")
+        end
         utype = TypeInfo.resolve(u.type_name, ShaderTarget::GLSL)
-        @symbol_table.register_global(u.name, utype)
         array_str = u.array_size ? "[#{u.array_size}]" : ""
+        @symbol_table.register_global(u.name, "#{utype}#{array_str}")
         @io << "layout(set = 1, binding = #{idx}) uniform #{utype} #{u.name}#{array_str};\n"
       end
       @io << "\n"

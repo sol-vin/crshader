@@ -28,6 +28,9 @@ module CrShader
         "builtin_#{regex_match[1]} #{op}= "
       end
 
+      # Normalize empty untyped array literal [] to ([] of Void) to allow Crystal's parser to accept it
+      normalized_source = normalized_source.gsub(/=\s*\[\s*\]/, "= ([] of Void)")
+
       begin
         parser = Crystal::Parser.new(normalized_source)
         parser.filename = @filename
@@ -248,11 +251,13 @@ module CrShader
       # Syntax A: uniform albedo : Color = Color.new(...), hint: :source_color
       #   node.args[0] is TypeDeclaration(var, declared_type, value)
       # Syntax B: uniform :albedo, Color, default: ..., hint: ...
+      # Syntax C: uniform my_var_array = [] or uniform my_palette = [vec4(...)]
       name = ""
       type_name = "Float32"
       default_val : Crystal::ASTNode? = nil
       hints = [] of String
       array_size : String? = nil
+      is_var_array = false
 
       if node.args.size >= 1
         first_arg = node.args[0]
@@ -261,11 +266,39 @@ module CrShader
           type_ast = first_arg.declared_type
           if type_ast.is_a?(Crystal::Generic) && type_ast.name.to_s == "Array"
             type_name = type_ast.type_vars.first?.try(&.to_s) || "Float32"
-            array_size = type_ast.type_vars.size > 1 ? type_ast.type_vars[1].to_s : nil
+            if type_ast.type_vars.size > 1
+              array_size = type_ast.type_vars[1].to_s
+              is_var_array = false
+            else
+              is_var_array = true
+              array_size = nil
+            end
           else
             type_name = type_ast.to_s
           end
           default_val = first_arg.value
+          if default_val.is_a?(Crystal::ArrayLiteral)
+            is_var_array = true
+            array_size ||= (default_val.elements.empty? ? "16" : default_val.elements.size.to_s)
+          end
+        elsif first_arg.is_a?(Crystal::Assign)
+          name = first_arg.target.to_s
+          val_node = first_arg.value
+          if val_node.is_a?(Crystal::Expressions) && val_node.expressions.size == 1
+            val_node = val_node.expressions.first
+          end
+          default_val = val_node
+          if default_val.is_a?(Crystal::ArrayLiteral)
+            is_var_array = true
+            array_size = default_val.elements.empty? ? "16" : default_val.elements.size.to_s
+            if !default_val.elements.empty?
+              if inferred = infer_array_elem_type(default_val.elements.first)
+                type_name = inferred
+              end
+            else
+              type_name = "Color"
+            end
+          end
         elsif first_arg.is_a?(Crystal::SymbolLiteral) || first_arg.is_a?(Crystal::Var) || first_arg.is_a?(Crystal::Call)
           name = node_to_string_or_sym(first_arg)
           if node.args.size >= 2
@@ -274,11 +307,15 @@ module CrShader
         end
       end
 
-      # Named args: hint, default, filter, repeat, size
+      # Named args: hint, default, filter, repeat, size, type
       node.named_args.try &.each do |narg|
         case narg.name
         when "default"
           default_val = narg.value
+          if default_val.is_a?(Crystal::ArrayLiteral)
+            is_var_array = true
+            array_size ||= (default_val.elements.empty? ? "16" : default_val.elements.size.to_s)
+          end
         when "hint"
           if narg.value.is_a?(Crystal::ArrayLiteral)
             narg.value.as(Crystal::ArrayLiteral).elements.each do |el|
@@ -291,6 +328,9 @@ module CrShader
           hints << "#{narg.name}_#{node_to_string_or_sym(narg.value)}"
         when "size"
           array_size = narg.value.to_s
+          is_var_array = true
+        when "type"
+          type_name = narg.value.to_s
         else
           hints << normalize_hint(node_to_hint_string(narg.value))
         end
@@ -306,8 +346,44 @@ module CrShader
         group: @current_group,
         subgroup: @current_subgroup,
         qualifier: qualifier,
-        array_size: array_size
+        array_size: array_size,
+        is_var_array: is_var_array
       )
+    end
+
+    private def infer_array_elem_type(elem : Crystal::ASTNode) : String?
+      case elem
+      when Crystal::Call
+        case elem.name
+        when "vec4" then "Vec4"
+        when "vec3" then "Vec3"
+        when "vec2" then "Vec2"
+        when "ivec2" then "IVec2"
+        when "ivec3" then "IVec3"
+        when "ivec4" then "IVec4"
+        when "Color", "new"
+          obj_name = elem.obj.try(&.to_s) || ""
+          if obj_name == "Color" || elem.name == "Color"
+            "Color"
+          elsif obj_name == "Vec4"
+            "Vec4"
+          elsif obj_name == "Vec3"
+            "Vec3"
+          elsif obj_name == "Vec2"
+            "Vec2"
+          else
+            nil
+          end
+        else
+          nil
+        end
+      when Crystal::NumberLiteral
+        elem.kind.to_s.includes?("f") ? "Float32" : "Int32"
+      when Crystal::BoolLiteral
+        "Bool"
+      else
+        nil
+      end
     end
 
     private def process_varying_call(node : Crystal::Call)

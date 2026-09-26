@@ -17,6 +17,7 @@ module CrShader
     property subgroup : String?
     property qualifier : UniformQualifier
     property array_size : String?
+    property is_var_array : Bool
 
     def initialize(
       @name : String,
@@ -26,7 +27,8 @@ module CrShader
       @group : String? = nil,
       @subgroup : String? = nil,
       @qualifier : UniformQualifier = UniformQualifier::Default,
-      @array_size : String? = nil
+      @array_size : String? = nil,
+      @is_var_array : Bool = false
     )
     end
   end

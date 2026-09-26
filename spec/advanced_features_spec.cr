@@ -195,4 +195,46 @@ describe "CrShader Advanced Features" do
     output.should contain("layout(rgba32f, set = 0, binding = 1) uniform image2D output_img;")
     output.should contain("barrier();")
   end
+
+  it "supports variable-sized constant arrays dynamically sized at compile time" do
+    source = <<-CR
+      shader_type :canvas_item
+
+      uniform my_var_array = []
+      uniform my_palette = [vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0, 1.0, 0.0, 1.0), vec4(0.0, 0.0, 1.0, 1.0)]
+
+      def fragment()
+        total = vec4(0.0)
+        (0...my_palette.size).each do |i|
+          total += my_palette[i]
+        end
+        COLOR = total + my_var_array[0]
+      end
+    CR
+
+    output = CrShader.compile(source)
+    output.should contain("const int my_var_array_size = 16;")
+    output.should contain("uniform vec4 my_var_array[16];")
+    output.should contain("const int my_palette_size = 3;")
+    output.should contain("uniform vec4 my_palette[3];")
+    output.should contain("for (int i = 0; i < my_palette.length(); i++) {")
+    output.should contain("total += my_palette[i];")
+  end
+
+  it "supports variable-sized constant arrays in compute GLSL shaders" do
+    source = <<-CR
+      shader_type :compute
+      local_size 8, 8, 1
+
+      uniform weights = [0.25, 0.5, 0.25]
+
+      def main()
+        w = weights[0]
+      end
+    CR
+
+    output = CrShader.compile(source, target: CrShader::ShaderTarget::GLSL)
+    output.should contain("const int weights_size = 3;")
+    output.should contain("layout(set = 1, binding = 0) uniform float weights[3];")
+  end
 end

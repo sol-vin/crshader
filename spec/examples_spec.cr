@@ -7,7 +7,7 @@ describe "CrShader Examples & Post-Processing Suite" do
   cr_files = Dir.glob("#{examples_dir}/*.crshader")
 
   it "finds all example shaders" do
-    cr_files.size.should be >= 10
+    cr_files.size.should be >= 20
   end
 
   cr_files.each do |cr_file|

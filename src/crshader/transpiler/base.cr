@@ -574,6 +574,11 @@ module CrShader
         @io << ")"
         return
       when "size"
+        if @symbol_table.is_array?(obj)
+          obj.accept(self)
+          @io << ".length()"
+          return
+        end
         func = "textureSize"
         @io << "#{func}("
         obj.accept(self)
@@ -655,7 +660,16 @@ module CrShader
           emit_args(node.args)
         end
         @io << ")"
-      when "length", "normalize", "abs", "floor", "ceil", "fract", "sin", "cos", "tan", "sqrt", "exp", "sign"
+      when "length"
+        if @symbol_table.is_array?(obj)
+          obj.accept(self)
+          @io << ".length()"
+        else
+          @io << "length("
+          obj.accept(self)
+          @io << ")"
+        end
+      when "normalize", "abs", "floor", "ceil", "fract", "sin", "cos", "tan", "sqrt", "exp", "sign"
         @io << "#{name}("
         obj.accept(self)
         @io << ")"

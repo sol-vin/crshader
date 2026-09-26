@@ -249,6 +249,23 @@ module CrShader
          end)
     end
 
+    def is_array?(node : Crystal::ASTNode) : Bool
+      case node
+      when Crystal::Var
+        lookup_type(node.name).try(&.includes?("[")) || false
+      when Crystal::Call
+        if node.obj.nil? && node.args.empty?
+          lookup_type(node.name).try(&.includes?("[")) || false
+        else
+          infer_type(node).includes?("[")
+        end
+      when Crystal::ArrayLiteral
+        true
+      else
+        infer_type(node).includes?("[")
+      end
+    end
+
     # Heuristic type inferencer from AST value
     def infer_type(node : Crystal::ASTNode) : String
       case node

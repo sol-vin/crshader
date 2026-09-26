@@ -1,0 +1,65 @@
+# =============================================================================
+# Universal Screen Transition Shader
+# =============================================================================
+# Inspired by godotshaders.com universal transition shader.
+# Provides multiple transition types driven by a single progress uniform:
+# 0: Horizontal Wipe
+# 1: Vertical Wipe
+# 2: Diamond Wipe
+# 3: Radial Clock Wipe
+# 4: Noise Mask Dissolve with Burning Edge
+
+shader_type :canvas_item
+render_mode :unshaded
+
+uniform progress : Float32 = 0.0, hint: hint_range(0.0, 1.0)
+uniform transition_type : Int32 = 4, hint: hint_range(0, 4)
+uniform transition_color : Color = Color.new(0.05, 0.05, 0.05, 1.0), hint: :source_color
+uniform burn_color : Color = Color.new(1.0, 0.4, 0.1, 1.0), hint: :source_color
+uniform burn_size : Float32 = 0.05, hint: hint_range(0.01, 0.2)
+uniform mask_texture : Sampler2D
+
+def fragment
+  uv = UV
+  cutoff = 0.0
+
+  case transition_type
+  when 0
+    # Horizontal Wipe
+    cutoff = uv.x
+  when 1
+    # Vertical Wipe
+    cutoff = uv.y
+  when 2
+    # Diamond Wipe
+    center_dist = abs(uv.x - 0.5) + abs(uv.y - 0.5)
+    cutoff = center_dist
+  when 3
+    # Radial Clock Wipe
+    dir = uv - vec2(0.5, 0.5)
+    angle = atan(dir.y, dir.x)
+    cutoff = (angle + 3.14159) / (2.0 * 3.14159)
+  else
+    # Noise Mask Dissolve
+    cutoff = texture(mask_texture, uv).r
+  end
+
+  if progress <= 0.001
+    COLOR = vec4(0.0, 0.0, 0.0, 0.0)
+  elsif progress >= 0.999
+    COLOR = transition_color
+  else
+    # Check if inside burn edge zone
+    is_solid = cutoff < progress
+    is_burn = (cutoff >= progress) && (cutoff < progress + burn_size)
+
+    if is_solid
+      COLOR = transition_color
+    elsif is_burn
+      edge_factor = 1.0 - ((cutoff - progress) / burn_size)
+      COLOR = mix(burn_color, transition_color, edge_factor)
+    else
+      COLOR = vec4(0.0, 0.0, 0.0, 0.0)
+    end
+  end
+end
