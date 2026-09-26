@@ -165,14 +165,36 @@ module CrShader
       end
     CR
 
+    POST_PROCESSING_LIB = <<-CR
+      def linear_depth(depth_sample : Float32, inv_proj : Mat4) : Float32
+        view_pos = inv_proj * vec4(0.0, 0.0, depth_sample, 1.0)
+        -view_pos.z / view_pos.w
+      end
+
+      def luminance(c : Vec3) : Float32
+        dot(c, vec3(0.2126, 0.7152, 0.0722))
+      end
+
+      def barrel_distortion(uv : Vec2, distortion : Float32) : Vec2
+        d = uv - vec2(0.5, 0.5)
+        uv + d * dot(d, d) * distortion
+      end
+
+      def vignette(uv : Vec2, radius : Float32, softness : Float32) : Float32
+        d = length(uv - vec2(0.5, 0.5))
+        smoothstep(radius, radius - softness, d)
+      end
+    CR
+
     REGISTRY = {
-      "math"      => MATH_LIB,
-      "noise"     => NOISE_LIB,
-      "color"     => COLOR_LIB,
-      "lighting"  => LIGHTING_LIB,
-      "sdf"       => SDF_LIB,
-      "tonemap"   => TONEMAP_LIB,
-      "triplanar" => TRIPLANAR_LIB,
+      "math"            => MATH_LIB,
+      "noise"           => NOISE_LIB,
+      "color"           => COLOR_LIB,
+      "lighting"        => LIGHTING_LIB,
+      "sdf"             => SDF_LIB,
+      "tonemap"         => TONEMAP_LIB,
+      "triplanar"       => TRIPLANAR_LIB,
+      "post_processing" => POST_PROCESSING_LIB,
     }
 
     def self.load_module(mod_name : String) : Array(Crystal::Def)

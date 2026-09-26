@@ -1,0 +1,103 @@
+# Kuwahara Filter (Painterly / Oil-Painting Post-Processing)
+# Based on Garrett Gunnell (Acerola) Post-Processing shaders
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
+uniform radius : Int32 = 4, hint: hint_range(1, 8)
+uniform sharpness : Float32 = 1.0, hint: hint_range(0.1, 5.0)
+
+def fragment
+  uv = SCREEN_UV
+  tex_size = vec2(textureSize(screen_texture, 0))
+  inv_size = vec2(1.0, 1.0) / tex_size
+
+  # 4 Quadrants: top-left, top-right, bottom-left, bottom-right
+  # We track mean colors and variance for each quadrant
+  m0 = vec3(0.0, 0.0, 0.0)
+  m1 = vec3(0.0, 0.0, 0.0)
+  m2 = vec3(0.0, 0.0, 0.0)
+  m3 = vec3(0.0, 0.0, 0.0)
+
+  s0 = vec3(0.0, 0.0, 0.0)
+  s1 = vec3(0.0, 0.0, 0.0)
+  s2 = vec3(0.0, 0.0, 0.0)
+  s3 = vec3(0.0, 0.0, 0.0)
+
+  n = float((radius + 1) * (radius + 1))
+
+  # Quadrant 0: top-left (-radius..0, -radius..0)
+  (-radius..0).each do |j|
+    (-radius..0).each do |i|
+      c = screen_texture.sample(uv + vec2(float(i), float(j)) * inv_size).rgb
+      m0 = m0 + c
+      s0 = s0 + c * c
+    end
+  end
+
+  # Quadrant 1: top-right (0..radius, -radius..0)
+  (-radius..0).each do |j|
+    (0..radius).each do |i|
+      c = screen_texture.sample(uv + vec2(float(i), float(j)) * inv_size).rgb
+      m1 = m1 + c
+      s1 = s1 + c * c
+    end
+  end
+
+  # Quadrant 2: bottom-left (-radius..0, 0..radius)
+  (0..radius).each do |j|
+    (-radius..0).each do |i|
+      c = screen_texture.sample(uv + vec2(float(i), float(j)) * inv_size).rgb
+      m2 = m2 + c
+      s2 = s2 + c * c
+    end
+  end
+
+  # Quadrant 3: bottom-right (0..radius, 0..radius)
+  (0..radius).each do |j|
+    (0..radius).each do |i|
+      c = screen_texture.sample(uv + vec2(float(i), float(j)) * inv_size).rgb
+      m3 = m3 + c
+      s3 = s3 + c * c
+    end
+  end
+
+  # Compute means and standard deviations
+  m0 = m0 / n
+  s0 = abs(s0 / n - m0 * m0)
+  v0 = s0.x + s0.y + s0.z
+
+  m1 = m1 / n
+  s1 = abs(s1 / n - m1 * m1)
+  v1 = s1.x + s1.y + s1.z
+
+  m2 = m2 / n
+  s2 = abs(s2 / n - m2 * m2)
+  v2 = s2.x + s2.y + s2.z
+
+  m3 = m3 / n
+  s3 = abs(s3 / n - m3 * m3)
+  v3 = s3.x + s3.y + s3.z
+
+  # Select quadrant with minimum variance
+  min_val = v0
+  final_col = m0
+
+  if v1 < min_val
+    min_val = v1
+    final_col = m1
+  end
+
+  if v2 < min_val
+    min_val = v2
+    final_col = m2
+  end
+
+  if v3 < min_val
+    min_val = v3
+    final_col = m3
+  end
+
+  COLOR = vec4(final_col, 1.0)
+end

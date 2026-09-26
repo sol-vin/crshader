@@ -8,9 +8,23 @@ module CrShader
 
     def initialize(io : IO, @program : ShaderProgram, symbol_table : SymbolTable = SymbolTable.new(ShaderTarget::GDShader))
       super(io, ShaderTarget::GDShader, symbol_table)
+      register_known_functions
+    end
+
+    private def register_known_functions
+      @program.functions.each do |name, def_node|
+        if rt = def_node.return_type
+          @symbol_table.register_function(name, TypeInfo.resolve(rt.to_s, ShaderTarget::GDShader))
+        end
+      end
     end
 
     def emit(helper_functions : Array(Crystal::Def) = [] of Crystal::Def)
+      helper_functions.each do |h|
+        if rt = h.return_type
+          @symbol_table.register_function(h.name, TypeInfo.resolve(rt.to_s, ShaderTarget::GDShader))
+        end
+      end
       emit_header
       emit_render_modes
       emit_constants
@@ -34,12 +48,30 @@ module CrShader
     private def emit_constants
       return if @program.constants.empty?
       @program.constants.each do |c|
-        val_type = c.type_name || @symbol_table.infer_type(c.value)
-        resolved_type = TypeInfo.resolve(val_type, ShaderTarget::GDShader)
-        @symbol_table.register_global(c.name, resolved_type)
-        @io << "const #{resolved_type} #{c.name} = "
-        c.value.accept(self)
-        @io << ";\n"
+        if c.value.is_a?(Crystal::ArrayLiteral)
+          arr = c.value.as(Crystal::ArrayLiteral)
+          elem_type = if (arr_of = arr.of)
+                        TypeInfo.resolve(arr_of.to_s, ShaderTarget::GDShader)
+                      elsif c.type_name
+                        TypeInfo.resolve(c.type_name.not_nil!, ShaderTarget::GDShader)
+                      elsif (first = arr.elements.first?)
+                        TypeInfo.resolve(@symbol_table.infer_type(first), ShaderTarget::GDShader)
+                      else
+                        "float"
+                      end
+          arr_size = arr.elements.size
+          @symbol_table.register_global(c.name, "#{elem_type}[#{arr_size}]")
+          @io << "const #{elem_type} #{c.name}[#{arr_size}] = "
+          c.value.accept(self)
+          @io << ";\n"
+        else
+          val_type = c.type_name || @symbol_table.infer_type(c.value)
+          resolved_type = TypeInfo.resolve(val_type, ShaderTarget::GDShader)
+          @symbol_table.register_global(c.name, resolved_type)
+          @io << "const #{resolved_type} #{c.name} = "
+          c.value.accept(self)
+          @io << ";\n"
+        end
       end
       @io << "\n"
     end
@@ -111,31 +143,39 @@ module CrShader
       @io << "\n"
     end
 
+    property emitted_functions : Set(String) = Set(String).new
+
     private def emit_helpers(helpers : Array(Crystal::Def))
       helpers.each do |h|
+        next if @emitted_functions.includes?(h.name)
         emit_function(h)
+        @emitted_functions.add(h.name)
       end
     end
 
     ALL_STAGES = ["vertex", "fragment", "light", "start", "process", "sky", "fog"]
 
     private def emit_shader_stages
-      ALL_STAGES.each do |stage_name|
-        if def_node = @program.functions[stage_name]?
-          emit_function(def_node, is_stage: true)
-        end
-      end
-
       # Emit any user-defined non-stage functions that were not in helpers
       @program.functions.each do |name, def_node|
         next if ALL_STAGES.includes?(name)
-        next if @symbol_table.declared_vars_in_scope.includes?(name)
+        next if @emitted_functions.includes?(name)
         emit_function(def_node)
+        @emitted_functions.add(name)
+      end
+
+      ALL_STAGES.each do |stage_name|
+        if def_node = @program.functions[stage_name]?
+          emit_function(def_node, is_stage: true)
+          @emitted_functions.add(stage_name)
+        end
       end
     end
 
     private def emit_function(def_node : Crystal::Def, is_stage : Bool = false)
       @symbol_table.enter_function
+      self.in_processor_function = is_stage
+      self.current_function_name = def_node.name
 
       ret_type = if is_stage
                    "void"
@@ -163,6 +203,8 @@ module CrShader
 
       @io << "}\n\n"
       @symbol_table.exit_function
+      self.in_processor_function = false
+      self.current_function_name = nil
     end
   end
 end

@@ -9,6 +9,12 @@ uniform float speed = 1.0;
 
 varying vec3 v_world_pos;
 
+float hash11(float p) {
+	vec3 p3 = fract((vec3(p, p, p) * 0.1031));
+	p3 += dot(p3, (p3.yzx + 33.33));
+	return fract(((p3.x + p3.y) * p3.z));
+}
+
 float value_noise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
@@ -20,19 +26,13 @@ float value_noise(vec2 p) {
 	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-float hash11(float p) {
-	vec3 p3 = fract((vec3(p, p, p) * 0.1031));
-	p3 += dot(p3, (p3.yzx + 33.33));
-	return fract(((p3.x + p3.y) * p3.z));
-}
-
 float fresnel(float power, vec3 normal, vec3 view) {
 	return pow(clamp((1.0 - dot(normal, view)), 0.0, 1.0), power);
 }
 
 void vertex() {
 	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec3 p = (v_world_pos.xz * 0.5);
+	vec2 p = (v_world_pos.xz * 0.5);
 	float n_val = 0.0;
 	n_val += (value_noise(((p * 1.0) + ((TIME * 0.2) * speed))) * (1.0 / 1.0));
 	n_val += (value_noise(((p * 2.0) + ((TIME * 0.2) * speed))) * (1.0 / 2.0));

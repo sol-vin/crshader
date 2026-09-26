@@ -4,6 +4,7 @@ require "./crshader/version"
 require "./crshader/ast/types"
 require "./crshader/compiler"
 require "./crshader/watcher/file_watcher"
+require "./crshader/stubs/stub_generator"
 
 module CrShader
   class CLI
@@ -32,6 +33,18 @@ module CrShader
         project_dir = args.size > 1 ? args[1] : "."
         install_godot_addon(project_dir)
         return
+      when "stubs", "generate-stubs"
+        sub_args = args[1..-1]
+        out_target = "src/libgodot/crshader.cr"
+        OptionParser.parse(sub_args) do |opts|
+          opts.banner = "Usage: crshader stubs [options]"
+          opts.on("-o PATH", "--output PATH", "Output path for Crystal stubs (default: src/libgodot/crshader.cr)") { |o| out_target = o }
+          opts.on("-h", "--help", "Show help") { puts opts; exit 0 }
+        end
+        FileUtils.mkdir_p(File.dirname(out_target))
+        StubGenerator.write_to_file(out_target)
+        puts "Generated CrShader stubs with mirrored Godot documentation -> #{out_target}"
+        return
       when "build", "compile"
         sub_args = args[1..-1]
         input_files = [] of String
@@ -59,8 +72,22 @@ module CrShader
         end
 
         compiler = Compiler.new(target_override: target_override, verbose: verbose)
-        input_files.each do |input_file|
-          final_output = (input_files.size == 1 && output_path) ? output_path : default_output_for(input_file, target_override)
+        expanded_files = [] of String
+        input_files.each do |f|
+          if f.includes?('*') || f.includes?('?')
+            matches = Dir.glob(f)
+            if matches.empty?
+              STDERR.puts "Error: No files matched pattern '#{f}'"
+              exit 1
+            end
+            expanded_files.concat(matches)
+          else
+            expanded_files << f
+          end
+        end
+
+        expanded_files.each do |input_file|
+          final_output = (expanded_files.size == 1 && output_path) ? output_path : default_output_for(input_file, target_override)
 
           begin
             res = compiler.compile_file(input_file, final_output)
@@ -140,6 +167,7 @@ CRSHADER: Crystal DSL & Transpiler for Godot GDShader and GLSL Compute
 Usage:
   crshader build <file.crshader> [-o output] [--target gdshader|glsl]
   crshader watch <path> [-o output_dir] [--target gdshader|glsl]
+  crshader stubs [-o output_path]
   crshader install-addon [godot_project_dir]
   crshader --version
   crshader --help
@@ -148,6 +176,7 @@ Examples:
   crshader build player.crshader
   crshader build compute.crshader --target glsl
   crshader watch shaders/
+  crshader stubs -o src/libgodot/crshader.cr
   crshader install-addon my_godot_project/
 HELP
     end

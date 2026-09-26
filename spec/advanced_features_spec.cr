@@ -63,9 +63,9 @@ describe "CrShader Advanced Features" do
 
     output = CrShader.compile(source)
     output.should contain("switch (mode) {")
-    output.should contain("case 0: {")
-    output.should contain("case 1: {")
-    output.should contain("default: {")
+    output.should contain("case 0:")
+    output.should contain("case 1:")
+    output.should contain("default:")
   end
 
   it "transpiles object-oriented texture methods" do

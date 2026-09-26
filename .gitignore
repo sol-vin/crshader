@@ -11,3 +11,8 @@ crash_dump*
 # Crystal dependencies
 lib/
 shard.lock
+
+# Test artifacts
+validation_log.txt
+*.tmp
+~*

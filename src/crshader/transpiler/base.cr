@@ -1,6 +1,7 @@
 require "compiler/crystal/syntax"
 require "../ast/types"
 require "./symbol_table"
+require "../parser/error_formatter"
 
 module CrShader
   abstract class BaseVisitor < Crystal::Visitor
@@ -8,11 +9,14 @@ module CrShader
     property target : ShaderTarget
     property symbol_table : SymbolTable
     property indent_level : Int32 = 0
+    property in_processor_function : Bool = false
+    property current_function_name : String? = nil
 
     def initialize(@io : IO, @target : ShaderTarget, @symbol_table : SymbolTable)
     end
 
     property current_return_type : String? = nil
+    property in_function_return : Bool = false
 
     def emit_indent
       @io << ("\t" * @indent_level)
@@ -36,8 +40,14 @@ module CrShader
           emit_indent
           is_last = (idx == last_idx)
           should_return = is_function_body && is_last && @current_return_type && @current_return_type != "void" && can_auto_return?(child)
+          if is_function_body && is_last && @current_return_type && @current_return_type != "void"
+            if child.is_a?(Crystal::Case) || child.is_a?(Crystal::If)
+              @in_function_return = true
+            end
+          end
           @io << "return " if should_return
           child.accept(self)
+          @in_function_return = false
           if needs_semicolon?(child)
             @io << ";\n"
           else
@@ -47,8 +57,14 @@ module CrShader
       elsif !node.is_a?(Crystal::Nop)
         emit_indent
         should_return = is_function_body && @current_return_type && @current_return_type != "void" && can_auto_return?(node)
+        if is_function_body && @current_return_type && @current_return_type != "void"
+          if node.is_a?(Crystal::Case) || node.is_a?(Crystal::If)
+            @in_function_return = true
+          end
+        end
         @io << "return " if should_return
         node.accept(self)
+        @in_function_return = false
         if needs_semicolon?(node)
           @io << ";\n"
         else
@@ -59,7 +75,18 @@ module CrShader
 
     private def can_auto_return?(node : Crystal::ASTNode) : Bool
       case node
-      when Crystal::Return, Crystal::Assign, Crystal::OpAssign, Crystal::If, Crystal::While, Crystal::Until
+      when Crystal::Return, Crystal::Assign, Crystal::OpAssign, Crystal::If, Crystal::While, Crystal::Until, Crystal::Case
+        false
+      else
+        true
+      end
+    end
+
+    private def is_single_expression?(node : Crystal::ASTNode) : Bool
+      case node
+      when Crystal::Expressions
+        node.expressions.size == 1 && is_single_expression?(node.expressions.first)
+      when Crystal::Assign, Crystal::OpAssign, Crystal::TypeDeclaration, Crystal::While, Crystal::Until, Crystal::Return, Crystal::Case
         false
       else
         true
@@ -150,12 +177,35 @@ module CrShader
         return false
       end
 
+      if @in_function_return && (else_node = node.else) && is_single_expression?(node.then) && is_single_expression?(else_node)
+        @io << "return (("
+        node.cond.accept(self)
+        @io << ") ? ("
+        node.then.accept(self)
+        @io << ") : ("
+        else_node.accept(self)
+        @io << "));\n"
+        return false
+      end
+
+      unless @in_expression
+        new_vars = find_new_assigned_vars(node)
+        new_vars.each do |v_name, v_type|
+          @symbol_table.mark_variable_declared(v_name, v_type)
+          @io << "#{v_type} #{v_name};\n"
+          emit_indent
+        end
+      end
+
+      is_ret = @in_function_return
       @io << "if ("
       node.cond.accept(self)
       @io << ") {\n"
+      @symbol_table.enter_scope
       indent do
-        emit_block_body(node.then)
+        emit_block_body(node.then, is_function_body: is_ret)
       end
+      @symbol_table.exit_scope
       emit_indent
       @io << "}"
 
@@ -165,9 +215,11 @@ module CrShader
           else_node.accept(self)
         elsif !else_node.is_a?(Crystal::Nop)
           @io << " else {\n"
+          @symbol_table.enter_scope
           indent do
-            emit_block_body(else_node)
+            emit_block_body(else_node, is_function_body: is_ret)
           end
+          @symbol_table.exit_scope
           emit_indent
           @io << "}"
         end
@@ -175,8 +227,27 @@ module CrShader
       false
     end
 
+    def visit(node : Crystal::ArrayLiteral)
+      elem_type = if of_type = node.of
+                    TypeInfo.resolve(of_type.to_s, @target)
+                  elsif first = node.elements.first?
+                    @symbol_table.infer_type(first)
+                  else
+                    "float"
+                  end
+      resolved_elem = TypeInfo.resolve(elem_type, @target)
+      @io << "#{resolved_elem}[]("
+      node.elements.each_with_index do |el, idx|
+        @io << ", " if idx > 0
+        el.accept(self)
+      end
+      @io << ")"
+      false
+    end
+
     def visit(node : Crystal::Case)
       if cond = node.cond
+        is_ret = @in_function_return
         @io << "switch ("
         cond.accept(self)
         @io << ") {\n"
@@ -186,24 +257,26 @@ module CrShader
               emit_indent
               @io << "case "
               c.accept(self)
-              @io << ": {\n"
+              @io << ":\n"
               indent do
-                emit_block_body(w.body)
-                emit_indent
-                @io << "break;\n"
+                emit_block_body(w.body, is_function_body: is_ret)
+                unless is_ret
+                  emit_indent
+                  @io << "break;\n"
+                end
               end
-              emit_indent
-              @io << "}\n"
             end
           end
           if else_node = node.else
             emit_indent
-            @io << "default: {\n"
+            @io << "default:\n"
             indent do
-              emit_block_body(else_node)
+              emit_block_body(else_node, is_function_body: is_ret)
+              unless is_ret
+                emit_indent
+                @io << "break;\n"
+              end
             end
-            emit_indent
-            @io << "}\n"
           end
         end
         emit_indent
@@ -212,32 +285,16 @@ module CrShader
       false
     end
 
-    def visit(node : Crystal::For)
-      var_name = node.var.to_s
-      if (exp = node.exp).is_a?(Crystal::RangeLiteral)
-        cmp_op = exp.exclusive? ? "<" : "<="
-        @symbol_table.mark_variable_declared(var_name, "int")
-        @io << "for (int #{var_name} = "
-        exp.from.accept(self)
-        @io << "; #{var_name} #{cmp_op} "
-        exp.to.accept(self)
-        @io << "; #{var_name}++) {\n"
-        indent do
-          emit_block_body(node.body)
-        end
-        emit_indent
-        @io << "}"
-      end
-      false
-    end
 
     def visit(node : Crystal::Unless)
       @io << "if (!("
       node.cond.accept(self)
       @io << ")) {\n"
+      @symbol_table.enter_scope
       indent do
         emit_block_body(node.then)
       end
+      @symbol_table.exit_scope
       emit_indent
       @io << "}"
       false
@@ -247,9 +304,11 @@ module CrShader
       @io << "while ("
       node.cond.accept(self)
       @io << ") {\n"
+      @symbol_table.enter_scope
       indent do
         emit_block_body(node.body)
       end
+      @symbol_table.exit_scope
       emit_indent
       @io << "}"
       false
@@ -259,15 +318,27 @@ module CrShader
       @io << "while (!("
       node.cond.accept(self)
       @io << ")) {\n"
+      @symbol_table.enter_scope
       indent do
         emit_block_body(node.body)
       end
+      @symbol_table.exit_scope
       emit_indent
       @io << "}"
       false
     end
 
     def visit(node : Crystal::Return)
+      if @target == ShaderTarget::GDShader && @in_processor_function
+        raise ShaderError.new(
+          "Processor function '#{@current_function_name}' in GDShader cannot use 'return'. " +
+          "Godot forbids 'return' statements inside vertex, fragment, and light processors. " +
+          "Structure your code with 'if / else' branches or use 'discard' instead.",
+          line_number: node.location.try(&.line_number),
+          column_number: node.location.try(&.column_number)
+        )
+      end
+
       @io << "return"
       if exp = node.exp
         @io << " "
@@ -323,7 +394,15 @@ module CrShader
     end
 
     def visit(node : Crystal::Path)
-      @io << node.names.join("::")
+      name = node.names.last
+      clean_name = name.sub(/^builtin_/, "")
+      if @symbol_table.is_builtin?(name)
+        @io << @symbol_table.resolve_builtin_name(name)
+      elsif @symbol_table.is_builtin?(clean_name)
+        @io << @symbol_table.resolve_builtin_name(clean_name)
+      else
+        @io << clean_name
+      end
       false
     end
 
@@ -380,6 +459,7 @@ module CrShader
       if node.name == "each" && (obj = actual_obj).is_a?(Crystal::RangeLiteral) && (block = node.block)
         var_name = block.args.first?.try(&.name) || "i"
         cmp_op = obj.exclusive? ? "<" : "<="
+        @symbol_table.enter_scope
         @symbol_table.mark_variable_declared(var_name, "int")
         @io << "for (int #{var_name} = "
         obj.from.accept(self)
@@ -391,12 +471,14 @@ module CrShader
         end
         emit_indent
         @io << "}"
+        @symbol_table.exit_scope
         return false
       end
 
       # 3. Check for count.times do |i|
       if node.name == "times" && (obj = node.obj) && (block = node.block)
         var_name = block.args.first?.try(&.name) || "i"
+        @symbol_table.enter_scope
         @symbol_table.mark_variable_declared(var_name, "int")
         @io << "for (int #{var_name} = 0; #{var_name} < "
         obj.accept(self)
@@ -406,6 +488,7 @@ module CrShader
         end
         emit_indent
         @io << "}"
+        @symbol_table.exit_scope
         return false
       end
 
@@ -512,6 +595,58 @@ module CrShader
         end
         @io << ")"
         return
+      when "to_f", "to_f32"
+        @io << "float("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "to_i", "to_i32"
+        @io << "int("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "to_u", "to_u32"
+        @io << "uint("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "to_b", "to_bool"
+        @io << "bool("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "saturate"
+        @io << "clamp("
+        obj.accept(self)
+        @io << ", 0.0, 1.0)"
+        return
+      when "lerp"
+        @io << "mix("
+        obj.accept(self)
+        @io << ", "
+        emit_args(node.args)
+        @io << ")"
+        return
+      when "frac"
+        @io << "fract("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "round"
+        @io << "round("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "trunc"
+        @io << "trunc("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "inversesqrt", "rsqrt"
+        @io << "inversesqrt("
+        obj.accept(self)
+        @io << ")"
+        return
       when "clamp", "mix", "step", "smoothstep"
         @io << "#{name}("
         obj.accept(self)
@@ -570,12 +705,29 @@ module CrShader
         return
       end
 
-      # Constructor helpers: color(...) -> vec4(...)
+      # Constructor helpers and HLSL / GLSL aliases
       target_func = case name
                     when "color"
                       @target == ShaderTarget::GDShader ? "vec4" : "vec4"
                     when "vec2", "vec3", "vec4", "mat2", "mat3", "mat4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4"
                       name
+                    when "float", "int", "uint", "bool"
+                      name
+                    when "lerp"
+                      "mix"
+                    when "frac"
+                      "fract"
+                    when "atan2"
+                      "atan"
+                    when "rsqrt"
+                      "inversesqrt"
+                    when "fmod"
+                      "mod"
+                    when "saturate"
+                      @io << "clamp("
+                      emit_args(node.args)
+                      @io << ", 0.0, 1.0)"
+                      return
                     when "rand"
                       # GDShader has no built-in zero-arg rand(), but our stdlib or custom expression can provide one
                       # If 0 args in GDShader, map to fract(sin(dot(UV, vec2(12.9898, 78.233))) * 43758.5453)
@@ -608,10 +760,43 @@ module CrShader
 
     private def needs_semicolon?(node : Crystal::ASTNode) : Bool
       case node
-      when Crystal::If, Crystal::Unless, Crystal::While, Crystal::Until, Crystal::Def
+      when Crystal::If, Crystal::Unless, Crystal::While, Crystal::Until, Crystal::Def, Crystal::Case
         false
+      when Crystal::Call
+        if (node.name == "each" || node.name == "times") && node.block
+          false
+        else
+          true
+        end
       else
         true
+      end
+    end
+
+    private def find_new_assigned_vars(node : Crystal::ASTNode) : Array(Tuple(String, String))
+      results = [] of Tuple(String, String)
+      collect_new_assigned_vars(node, results)
+      results.uniq! { |r| r[0] }
+      results
+    end
+
+    private def collect_new_assigned_vars(node : Crystal::ASTNode, results : Array(Tuple(String, String)))
+      case node
+      when Crystal::Assign
+        if node.target.is_a?(Crystal::Var)
+          var_name = node.target.as(Crystal::Var).name
+          if !@symbol_table.is_builtin?(var_name) && !@symbol_table.variable_declared?(var_name)
+            type_name = @symbol_table.infer_type(node.value)
+            results << {var_name, type_name}
+          end
+        end
+      when Crystal::Expressions
+        node.expressions.each { |child| collect_new_assigned_vars(child, results) }
+      when Crystal::If
+        collect_new_assigned_vars(node.then, results)
+        if else_node = node.else
+          collect_new_assigned_vars(else_node, results)
+        end
       end
     end
   end

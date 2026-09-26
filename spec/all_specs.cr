@@ -4,3 +4,7 @@ require "./macro_spec"
 require "./gdshader_spec"
 require "./glsl_spec"
 require "./tree_shaker_spec"
+require "./advanced_features_spec"
+require "./examples_spec"
+require "./stubs_spec"
+

@@ -8,6 +8,11 @@ module CrShader
     property current_scope_vars : Hash(String, String) = {} of String => String
     property declared_vars_in_scope : Set(String) = Set(String).new
     property referenced_functions : Set(String) = Set(String).new
+    property function_return_types : Hash(String, String) = {} of String => String
+
+    def register_function(name : String, return_type : String)
+      @function_return_types[name] = return_type
+    end
 
     # GDShader built-in variables that are already declared by Godot
     GDSHADER_BUILTINS = {
@@ -78,6 +83,9 @@ module CrShader
       "INSTANCE_CUSTOM"         => "vec4",
       "BONE_INDICES"            => "uvec4",
       "BONE_WEIGHTS"            => "vec4",
+      "OUTPUT_IS_SRGB"          => "bool",
+      "VIEW_INDEX"              => "int",
+      "VIEWPORT_SIZE"           => "vec2",
       # Particles
       "TRANSFORM"               => "mat4",
       "VELOCITY"                => "vec3",
@@ -145,24 +153,8 @@ module CrShader
     def initialize(@target : ShaderTarget = ShaderTarget::GDShader, @shader_type : ShaderType = ShaderType::Spatial)
     end
 
-    def enter_function
-      @current_scope_vars.clear
-      @declared_vars_in_scope.clear
-    end
-
-    def exit_function
-      @current_scope_vars.clear
-      @declared_vars_in_scope.clear
-    end
-
     def register_global(name : String, type_name : String)
       @global_symbols[name] = TypeInfo.resolve(type_name, @target)
-    end
-
-    def register_param(name : String, type_name : String)
-      resolved = TypeInfo.resolve(type_name, @target)
-      @current_scope_vars[name] = resolved
-      @declared_vars_in_scope.add(name)
     end
 
     def is_builtin?(name : String) : Bool
@@ -204,15 +196,45 @@ module CrShader
       end
     end
 
+    property scope_stack : Array(Set(String)) = [Set(String).new]
+
+    def enter_scope
+      @scope_stack.push(Set(String).new)
+    end
+
+    def exit_scope
+      @scope_stack.pop if @scope_stack.size > 1
+    end
+
+    def enter_function
+      @scope_stack.clear
+      @scope_stack.push(Set(String).new)
+      @current_scope_vars.clear
+      @declared_vars_in_scope.clear
+    end
+
+    def exit_function
+      @scope_stack.clear
+      @scope_stack.push(Set(String).new)
+      @current_scope_vars.clear
+      @declared_vars_in_scope.clear
+    end
+
+    def register_param(name : String, type_name : String)
+      resolved = TypeInfo.resolve(type_name, @target)
+      @current_scope_vars[name] = resolved
+      @scope_stack.first.add(name)
+    end
+
     def variable_declared?(name : String) : Bool
-      @declared_vars_in_scope.includes?(name) ||
+      @scope_stack.any?(&.includes?(name)) ||
         @global_symbols.has_key?(name) ||
         is_builtin?(name)
     end
 
     def mark_variable_declared(name : String, type_name : String)
       @current_scope_vars[name] = type_name
-      @declared_vars_in_scope.add(name)
+      @scope_stack.last.add(name)
     end
 
     def lookup_type(name : String) : String?
@@ -238,6 +260,13 @@ module CrShader
         else
           "float"
         end
+      when Crystal::ArrayLiteral
+        if first = node.elements.first?
+          elem = infer_type(first)
+          "#{elem}[#{node.elements.size}]"
+        else
+          "float[0]"
+        end
       when Crystal::NumberLiteral
         node.kind == :f32 || node.kind == :f64 || node.value.includes?('.') ? "float" : "int"
       when Crystal::BoolLiteral
@@ -246,6 +275,10 @@ module CrShader
         "string"
       when Crystal::Var
         lookup_type(node.name) || "float"
+      when Crystal::Path
+        name = node.names.last
+        clean = name.sub(/^builtin_/, "")
+        lookup_type(name) || lookup_type(clean) || "float"
       when Crystal::Call
         infer_call_type(node)
       when Crystal::And, Crystal::Or
@@ -256,11 +289,44 @@ module CrShader
     end
 
     private def infer_call_type(node : Crystal::Call) : String
+      if node.args.empty? && node.obj.nil?
+        clean = node.name.sub(/^builtin_/, "")
+        if t = lookup_type(node.name) || lookup_type(clean)
+          return t
+        end
+      end
+
+      if ret = @function_return_types[node.name]?
+        return ret
+      end
+
       if ["sample", "sample_lod", "fetch"].includes?(node.name)
         return "vec4"
       end
       if node.name == "size"
         return "ivec2"
+      end
+      if node.name == "[]" && (obj = node.obj)
+        parent_type = infer_type(obj)
+        if parent_type.includes?('[')
+          return parent_type.split('[').first
+        elsif parent_type.starts_with?("vec")
+          return "float"
+        elsif parent_type.starts_with?("ivec")
+          return "int"
+        elsif parent_type.starts_with?("uvec")
+          return "uint"
+        elsif parent_type.starts_with?("bvec")
+          return "bool"
+        elsif parent_type == "mat2"
+          return "vec2"
+        elsif parent_type == "mat3"
+          return "vec3"
+        elsif parent_type == "mat4"
+          return "vec4"
+        else
+          return "float"
+        end
       end
       if ["+", "-", "*", "/"].includes?(node.name) && (obj = node.obj) && node.args.size == 1
         left_type = infer_type(obj)
@@ -294,32 +360,37 @@ module CrShader
       when "uvec2" then "uvec2"
       when "uvec3" then "uvec3"
       when "uvec4" then "uvec4"
+      when "int", "to_i", "to_i32" then "int"
+      when "uint", "to_u", "to_u32" then "uint"
+      when "float", "to_f", "to_f32" then "float"
+      when "bool", "to_b", "to_bool" then "bool"
       when "length", "distance", "dot" then "float"
       when "cross" then "vec3"
-      when "normalize", "reflect", "refract", "clamp", "mix", "step", "smoothstep"
+      when "normalize", "reflect", "refract", "clamp", "mix", "step", "smoothstep", "lerp", "saturate"
         if first_arg = node.args.first?
           infer_type(first_arg)
         else
           "float"
         end
-      when "sin", "cos", "tan", "pow", "exp", "sqrt", "abs", "floor", "ceil", "fract", "rand"
+      when "sin", "cos", "tan", "pow", "exp", "sqrt", "abs", "floor", "ceil", "fract", "frac", "rand", "round", "trunc"
         if first_arg = node.args.first?
           infer_type(first_arg)
         else
           "float"
         end
       else
-        # Check swizzle on receiver: e.g. v.xy, v.rgb
+        # Check swizzle on receiver: e.g. v.xy, v.xz, v.rgb, v.rgba
         if (obj = node.obj) && node.args.empty?
-          case node.name
-          when "x", "y", "z", "w", "r", "g", "b", "a"
-            return "float"
-          when "xy", "rg", "st"
-            return "vec2"
-          when "xyz", "rgb", "stp"
-            return "vec3"
-          when "xyzw", "rgba"
-            return "vec4"
+          sname = node.name
+          if (sname.each_char.all? { |ch| "xyzw".includes?(ch) } ||
+              sname.each_char.all? { |ch| "rgba".includes?(ch) } ||
+              sname.each_char.all? { |ch| "stpq".includes?(ch) }) && sname.size <= 4
+            case sname.size
+            when 1 then return "float"
+            when 2 then return "vec2"
+            when 3 then return "vec3"
+            when 4 then return "vec4"
+            end
           end
         end
 

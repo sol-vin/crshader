@@ -280,13 +280,19 @@ module CrShader
         when "default"
           default_val = narg.value
         when "hint"
-          hints << node_to_hint_string(narg.value)
+          if narg.value.is_a?(Crystal::ArrayLiteral)
+            narg.value.as(Crystal::ArrayLiteral).elements.each do |el|
+              hints << normalize_hint(node_to_hint_string(el))
+            end
+          else
+            hints << normalize_hint(node_to_hint_string(narg.value))
+          end
         when "filter", "repeat"
           hints << "#{narg.name}_#{node_to_string_or_sym(narg.value)}"
         when "size"
           array_size = narg.value.to_s
         else
-          hints << node_to_hint_string(narg.value)
+          hints << normalize_hint(node_to_hint_string(narg.value))
         end
       end
 
@@ -538,6 +544,20 @@ module CrShader
         "#{node.name}(#{args_str})"
       else
         node.to_s
+      end
+    end
+
+    private def normalize_hint(raw_hint : String) : String
+      case raw_hint
+      when "screen_texture", "depth_texture", "normal_roughness_texture",
+           "default_white", "default_black", "default_transparent",
+           "roughness_r", "roughness_g", "roughness_b", "roughness_a",
+           "roughness_normal", "anisotropy", "normal"
+        "hint_#{raw_hint}"
+      when /^hint_/
+        raw_hint
+      else
+        raw_hint
       end
     end
   end

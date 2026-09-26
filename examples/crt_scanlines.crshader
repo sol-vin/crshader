@@ -1,0 +1,53 @@
+# Retro CRT Monitor, Phosphor Mask & Scanlines
+# Based on Garrett Gunnell (Acerola) Retro & CRT Post-Processing
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
+uniform curvature : Float32 = 0.04, hint: hint_range(0.0, 0.2)
+uniform scanline_count : Float32 = 240.0, hint: hint_range(50.0, 800.0)
+uniform scanline_intensity : Float32 = 0.25, hint: hint_range(0.0, 1.0)
+uniform scanline_speed : Float32 = 1.0, hint: hint_range(0.0, 5.0)
+uniform phosphor_strength : Float32 = 0.15, hint: hint_range(0.0, 0.5)
+
+def curve_uv(uv : Vec2, k : Float32) : Vec2
+  centered = uv * 2.0 - vec2(1.0, 1.0)
+  offset = centered.yx * centered.yx * k
+  curved = centered + centered * offset
+  curved * 0.5 + vec2(0.5, 0.5)
+end
+
+def fragment
+  uv = curve_uv(SCREEN_UV, curvature)
+
+  # Render black outside curved screen boundary, otherwise CRT monitor
+  if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0
+    COLOR = vec4(0.0, 0.0, 0.0, 1.0)
+  else
+    col = screen_texture.sample(uv).rgb
+
+    # Scanline modulation
+    scanline = sin(uv.y * scanline_count * 6.2831853 + TIME * scanline_speed) * 0.5 + 0.5
+    col = col * (1.0 - scanline * scanline_intensity)
+
+    # Phosphor RGB triad mask based on screen pixel column
+    px = int(FRAGCOORD.x) % 3
+    mask = vec3(1.0 - phosphor_strength, 1.0 - phosphor_strength, 1.0 - phosphor_strength)
+    if px == 0
+      mask.r = 1.0 + phosphor_strength
+    elsif px == 1
+      mask.g = 1.0 + phosphor_strength
+    else
+      mask.b = 1.0 + phosphor_strength
+    end
+    col = col * mask
+
+    # Screen edge vignette / bezel shadow
+    d = length(uv - vec2(0.5, 0.5))
+    vig = smoothstep(0.75, 0.5, d)
+    col = col * vig
+
+    COLOR = vec4(col, 1.0)
+  end
+end
