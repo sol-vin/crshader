@@ -28,6 +28,7 @@ module CrShader
 
       setup_ui
       refresh_file_list
+      Godot.print("[CRShader] CrShader Studio GUI mounted (Toolbar, SourceEdit, TargetEdit ready)")
     end
 
     def setup_ui : Void
@@ -318,7 +319,7 @@ module CrShader
 
       # 6. Regions (Strings and Comments)
       highlighter.call("add_color_region", "\"", "\"", string_color, false)
-      highlighter.call("add_color_region", "#", "\n", comment_color, true)
+      highlighter.call("add_color_region", "#", "", comment_color, true)
 
       edit.call("set_syntax_highlighter", highlighter)
       @highlighter = highlighter

@@ -15,4 +15,4 @@ config/features=PackedStringArray("4.8")
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/crshader/plugin.cfg", "res://addons/crystal_integration/plugin.cfg")
+enabled=PackedStringArray("res://addons/crshader/plugin.cfg")

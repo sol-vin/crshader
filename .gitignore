@@ -16,3 +16,4 @@ shard.lock
 validation_log.txt
 *.tmp
 ~*
+*.uid
