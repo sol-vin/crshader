@@ -40,7 +40,7 @@ ifeq ($(strip $(RELEASE)),1)
 	CRYSTAL_FLAGS += --release
 endif
 
-.PHONY: all build deps bridge extension_list addons project_bindings project-bindings bindings package package_addon package-addon export export_release export-release rebuild run editor run_editor run-editor test spec setup_dev setup-dev clean help
+.PHONY: all build deps bridge extension_list addons project_bindings project-bindings bindings package package_addon package-addon export export_release export-release rebuild run editor run_editor run-editor test spec docs setup_dev setup-dev clean help
 
 all: dirs deps bridge extension_list addons project_bindings build
 	@echo ===================================================================
@@ -106,6 +106,10 @@ clean:
 test spec:
 	@echo [Addon] Running Crystal specifications...
 	@crystal spec
+
+docs:
+	@echo [CrShader] Generating HTML API documentation from language stubs...
+	@crystal docs src/crshader.cr --output docs
 
 help:
 	@echo ===================================================================

@@ -5,6 +5,7 @@ require "./crshader/ast/types"
 require "./crshader/compiler"
 require "./crshader/watcher/file_watcher"
 require "./crshader/stubs/stub_generator"
+require "./crshader/stubs"
 
 module CrShader
   class CLI

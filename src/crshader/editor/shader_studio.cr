@@ -247,7 +247,7 @@ module CrShader
     # =========================================================================
     private def setup_syntax_highlighter(edit : CodeEdit) : Void
       highlighter = Godot.create(Godot::CodeHighlighter)
-      return unless highlighter
+      return if highlighter.nil?
 
       # Colors
       kw_color = Color.new(0.85_f32, 0.45_f32, 0.9_f32, 1.0_f32)     # Purple
