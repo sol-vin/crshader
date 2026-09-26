@@ -109,8 +109,15 @@ jobs:
         shell: pwsh
         run: |
           $godotVer = "${{ steps.godot-meta.outputs.godot_version }}"
+          if (-not $godotVer) { $godotVer = "4.8-dev6" }
           $candidate = $env:GODOT4
           if ($candidate) { $candidate = $candidate -replace '^/([a-zA-Z])/', '$1:/' }
+          if ($candidate) {
+            $nonConsole = $candidate -replace '_console\.exe$', '.exe'
+            if (Test-Path $nonConsole) {
+              $candidate = $nonConsole
+            }
+          }
           if ($candidate -and (Test-Path $candidate)) {
             Copy-Item $candidate ./godot.exe -Force
           } else {
@@ -122,7 +129,7 @@ jobs:
               $zipUrl = "https://github.com/godotengine/godot-builds/releases/download/$godotVer/Godot_v${godotVer}_win64.exe.zip"
               Invoke-WebRequest -Uri $zipUrl -OutFile "godot.zip"
               Expand-Archive -Path "godot.zip" -DestinationPath "." -Force
-              $extractedExe = Get-ChildItem -Path "." -Filter "Godot_v*_win64.exe" | Select-Object -First 1
+              $extractedExe = Get-ChildItem -Path "." -Filter "Godot_v*_win64.exe" | Where-Object { $_.Name -notmatch "console" } | Select-Object -First 1
               if ($extractedExe) {
                 Move-Item $extractedExe.FullName "./godot.exe" -Force
               }
@@ -131,20 +138,67 @@ jobs:
           }
           ./godot.exe --version
 
-      - name: Ensure Lapis CLI
+      - name: Ensure Lapis CLI & Runtime Libraries (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
+          mkdir -p bin
           if command -v lapis >/dev/null 2>&1; then
-            echo "Lapis found on system PATH"
-          elif [ -f "bin/lapis" ] || [ -f "bin/lapis.exe" ]; then
-            echo "Lapis binary found in bin/"
-          elif [ -f "../bin/lapis" ] || [ -f "../bin/lapis.exe" ]; then
-            echo "Lapis binary found in parent workspace bin/"
-          elif [ -f "lib/lapis/tools/lapis/src/lapis.cr" ]; then
-            echo "Compiling Lapis CLI from shard source..."
-            mkdir -p bin
-            crystal build lib/lapis/tools/lapis/src/lapis.cr -o bin/lapis --release
+            echo "Lapis found on system PATH: $(command -v lapis)"
+          elif [ -f "bin/lapis" ]; then
+            echo "Lapis found in bin/lapis"
+          elif [ -f "../bin/lapis" ]; then
+            echo "Lapis found in parent directory"
+            cp ../bin/lapis bin/
+          else
+            echo "Downloading pre-compiled Lapis CLI for Linux..."
+            curl -sSL "https://github.com/sol-vin/lapis/releases/latest/download/lapis-linux-x86_64.tar.gz" -o lapis.tar.gz || wget -q "https://github.com/sol-vin/lapis/releases/latest/download/lapis-linux-x86_64.tar.gz" -O lapis.tar.gz
+            if [ -f "lapis.tar.gz" ] && [ -s "lapis.tar.gz" ]; then
+              tar -xzf lapis.tar.gz -C bin/
+              rm -f lapis.tar.gz
+              chmod +x bin/lapis 2>/dev/null || true
+            fi
           fi
+          if [ -f "bin/lapis" ]; then
+            echo "$(pwd)/bin" >> "$GITHUB_PATH"
+          fi
+          if [ ! -f "bin/crystal_bridge.so" ] && [ ! -f "addons/*/*/crystal_bridge.so" ]; then
+            echo "Staging pre-compiled Linux GDExtension bridge..."
+            curl -sSL "https://github.com/sol-vin/lapis/releases/latest/download/godot-crystal-addon-linux-x86_64.zip" -o addon-linux.zip 2>/dev/null || true
+            if [ -f "addon-linux.zip" ] && [ -s "addon-linux.zip" ]; then
+              unzip -q -o addon-linux.zip
+              rm -f addon-linux.zip
+            fi
+          fi
+
+      - name: Ensure Lapis CLI & Runtime Libraries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "bin" | Out-Null
+          if (Get-Command lapis.exe -ErrorAction SilentlyContinue) {
+            Write-Host "Lapis found on system PATH"
+          } elseif (Test-Path "bin/lapis.exe") {
+            Write-Host "Lapis found in bin/"
+          } elseif (Test-Path "../bin/lapis.exe") {
+            Write-Host "Lapis found in parent directory"
+            Copy-Item "../bin/lapis.exe" "bin/" -Force
+          } else {
+            Write-Host "Downloading pre-compiled Lapis CLI for Windows..."
+            $lapisZip = "https://github.com/sol-vin/lapis/releases/latest/download/lapis-windows-x86_64.zip"
+            try {
+              Invoke-WebRequest -Uri $lapisZip -OutFile "lapis.zip"
+              Expand-Archive -Path "lapis.zip" -DestinationPath "bin" -Force
+              Remove-Item "lapis.zip" -Force -ErrorAction SilentlyContinue
+            } catch {
+              Write-Host "Download skipped or failed: $_"
+            }
+          }
+          if (Test-Path "bin/lapis.exe") {
+            $binPath = (Get-Item "bin").FullName
+            Add-Content -Path $env:GITHUB_PATH -Value $binPath
+            ./bin/lapis.exe --version
+          }
 
       - name: Build Addon Project (Linux)
         if: runner.os == 'Linux'
