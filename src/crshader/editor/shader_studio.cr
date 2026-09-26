@@ -198,12 +198,12 @@ module CrShader
       @active_file = path
       content = File.read(path)
       @source_edit.try &.call("set_text", content)
-      compile_current_source
+      compile_current_source(content)
     end
 
-    def compile_current_source : Void
-      source = @source_edit.try(&.call("get_text").to_s) || ""
-      return if source.empty?
+    def compile_current_source(explicit_source : String? = nil) : Void
+      source = explicit_source || @source_edit.try(&.call("get_text").to_s) || ""
+      return if source.strip.empty?
 
       compiler = Compiler.new
       begin
