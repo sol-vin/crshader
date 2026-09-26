@@ -1,0 +1,15 @@
+name: crshader
+version: 0.1.0
+authors:
+  - Developer <developer@example.com>
+license: MIT
+
+dependencies:
+  lapis:
+    path: ../../
+
+targets:
+  crshader:
+    main: src/crshader.cr
+  addon:
+    main: src/main.cr

@@ -1,0 +1,6 @@
+require "spec"
+require "./parser_spec"
+require "./macro_spec"
+require "./gdshader_spec"
+require "./glsl_spec"
+require "./tree_shaker_spec"

@@ -1,0 +1,40 @@
+{
+	"gdscript_classes": [],
+	"plugin_classes": [
+		{
+			"constants": {},
+			"inherits": "EditorPlugin",
+			"is_instantiable": false,
+			"methods": [],
+			"name": "CrShaderPlugin",
+			"properties": [
+				{
+					"class_name": "Hash(String, Time)",
+					"hint": 0,
+					"hint_string": "",
+					"name": "file_timestamps",
+					"type": 24,
+					"type_name": "Object"
+				},
+				{
+					"class_name": "Float64",
+					"hint": 0,
+					"hint_string": "",
+					"name": "check_interval",
+					"type": 3,
+					"type_name": "float"
+				},
+				{
+					"class_name": "Float64",
+					"hint": 0,
+					"hint_string": "",
+					"name": "time_since_last_check",
+					"type": 3,
+					"type_name": "float"
+				}
+			],
+			"signals": []
+		}
+	],
+	"project_name": "Crshader Test Runner"
+}
