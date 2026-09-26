@@ -182,5 +182,3 @@ HELP
     end
   end
 end
-
-CrShader::CLI.run

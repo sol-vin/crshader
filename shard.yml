@@ -6,10 +6,11 @@ license: MIT
 
 dependencies:
   lapis:
-    path: ../../
+    github: sol-vin/lapis
+    branch: master
 
 targets:
   crshader:
-    main: src/crshader.cr
+    main: src/cli.cr
   addon:
     main: src/main.cr
