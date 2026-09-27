@@ -14,7 +14,7 @@ module CrShader
       @pool[def_node.name] = def_node
     end
 
-    STAGES = ["vertex", "fragment", "light", "start", "process", "sky", "fog", "main"]
+    STAGES = ["vertex", "fragment", "light", "start", "process", "collide", "sky", "fog", "main"]
 
     def process(program : ShaderProgram) : Array(Crystal::Def)
       @reachable_names.clear

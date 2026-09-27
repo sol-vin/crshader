@@ -45,6 +45,16 @@ module CrShader
       compiled
     end
 
+    def compile(source : String, target : ShaderTarget? = nil) : String
+      old_target = @target_override
+      @target_override = target if target
+      begin
+        compile_source(source)
+      ensure
+        @target_override = old_target
+      end
+    end
+
     def compile_source(source : String, filename : String? = nil) : String
       parser = DslParser.new(filename: filename)
       program = parser.parse(source)
@@ -87,7 +97,7 @@ module CrShader
 
       # Also add any non-stage user functions to pool
       program.functions.each do |name, d|
-        unless ["vertex", "fragment", "light", "main"].includes?(name)
+        unless TreeShaker::STAGES.includes?(name)
           tree_shaker.add_library_def(d)
         end
       end

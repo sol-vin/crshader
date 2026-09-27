@@ -669,18 +669,99 @@ module CrShader
           obj.accept(self)
           @io << ")"
         end
-      when "normalize", "abs", "floor", "ceil", "fract", "sin", "cos", "tan", "sqrt", "exp", "sign"
+      when "inverse", "transpose", "determinant"
         @io << "#{name}("
         obj.accept(self)
         @io << ")"
+        return
+      when "any?", "any"
+        @io << "any("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "all?", "all"
+        @io << "all("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "isnan?", "isnan"
+        @io << "isnan("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "isinf?", "isinf"
+        @io << "isinf("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "dFdx", "dfdx"
+        @io << "dFdx("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "dFdy", "dfdy"
+        @io << "dFdy("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "fwidth"
+        @io << "fwidth("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "outer_product", "outerProduct"
+        @io << "outerProduct("
+        obj.accept(self)
+        if !node.args.empty?
+          @io << ", "
+          emit_args(node.args)
+        end
+        @io << ")"
+        return
+      when "fma"
+        @io << "fma("
+        obj.accept(self)
+        if !node.args.empty?
+          @io << ", "
+          emit_args(node.args)
+        end
+        @io << ")"
+        return
+      when "faceforward"
+        @io << "faceforward("
+        obj.accept(self)
+        if !node.args.empty?
+          @io << ", "
+          emit_args(node.args)
+        end
+        @io << ")"
+        return
+      when "mod", "ldexp", "frexp"
+        @io << "#{name}("
+        obj.accept(self)
+        if !node.args.empty?
+          @io << ", "
+          emit_args(node.args)
+        end
+        @io << ")"
+        return
+      when "normalize", "abs", "floor", "ceil", "fract", "sin", "cos", "tan", "sqrt", "exp", "sign",
+           "log", "log2", "exp2", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+           "not", "radians", "degrees"
+        @io << "#{name}("
+        obj.accept(self)
+        @io << ")"
+        return
       when "dot", "cross", "distance", "reflect", "refract", "pow", "min", "max"
         @io << "#{name}("
         obj.accept(self)
         @io << ", "
         emit_args(node.args)
         @io << ")"
+        return
       when "discard"
         @io << "discard"
+        return
       else
         # Swizzle or field access (e.g. pos.xyz, color.rgb, uv.x)
         obj.accept(self)

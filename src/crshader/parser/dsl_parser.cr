@@ -25,10 +25,28 @@ module CrShader
     def parse(source : String) : ShaderProgram
       @source_lines = source.lines
 
+      # Extract raw preprocessor directives: #include, #define, #undef, #ifdef, #ifndef, #if, #elif, #else, #endif, #pragma
+      source.each_line do |line|
+        trimmed = line.strip
+        if trimmed =~ /^#(include|define|undef|ifdef|ifndef|if|elif|else|endif|pragma)\b/
+          @program.preprocessor_lines << trimmed
+        end
+      end
+
       # Normalize uppercase built-in variable assignments to avoid dynamic constant assignment errors
+      # and handle compound assignments without requiring prior local definition
       normalized_source = source.gsub(/\b([A-Z][A-Z0-9_]*)\s*(\+|-|\*|\/|%|&|\||\^|<<|>>)?=(?!=)/) do |match, regex_match|
-        op = regex_match[2]? || ""
-        "builtin_#{regex_match[1]} #{op}= "
+        name = regex_match[1]
+        if op = regex_match[2]?
+          "builtin_#{name} = #{name} #{op} "
+        else
+          "builtin_#{name} = "
+        end
+      end
+
+      # Normalize include with string literal to gd_include to bypass Crystal's module include keyword
+      normalized_source = normalized_source.gsub(/\binclude\s+("res:\/\/[^"]+"|\"[^\"]+\")/) do |_, regex_match|
+        "gd_include #{regex_match[1]}"
       end
 
       # Normalize empty untyped array literal [] to ([] of Void) to allow Crystal's parser to accept it
@@ -39,9 +57,9 @@ module CrShader
         "uniform #{regex_match[1]}"
       end
 
-      # Normalize lowercase primitive types in genuine type annotations (uniform/export/field x : float, record x : float, func(x : float), etc.)
+      # Normalize lowercase primitive types in genuine type annotations (uniform/export/varying/field x : float, record x : float, func(x : float), etc.)
       type_pattern = "(float|int|uint|bool|vec2|vec3|vec4|color|mat2|mat3|mat4|sampler2d|sampler_2d|sampler_cube|ivec2|ivec3|ivec4|uvec2|uvec3|uvec4)"
-      normalized_source = normalized_source.gsub(/\b(uniform|export|varying|field)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
+      normalized_source = normalized_source.gsub(/\b(uniform|export|varying|flat_varying|smooth_varying|field)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
         "#{m[1]} #{m[2]} : #{TypeInfo.normalize(m[3])}"
       end
       normalized_source = normalized_source.gsub(/(^|\n|\brecord\b[^\n]*?,\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
@@ -233,6 +251,47 @@ module CrShader
       when "varying"
         process_varying_call(node)
 
+      when "flat_varying"
+        process_varying_call(node, forced_qualifier: "flat")
+
+      when "smooth_varying"
+        process_varying_call(node, forced_qualifier: "smooth")
+
+      when "include", "gd_include"
+        if arg = node.args.first?
+          inc_path = node_to_string_or_sym(arg)
+          @program.includes << inc_path
+        end
+
+      when "define"
+        if arg = node.args.first?
+          def_name = node_to_string_or_sym(arg)
+          val_str = node.args[1]?.try { |a| node_to_string_or_sym(a) }
+          directive = val_str ? "#define #{def_name} #{val_str}" : "#define #{def_name}"
+          @program.preprocessor_lines << directive
+        end
+
+      when "undefine", "undef"
+        if arg = node.args.first?
+          def_name = node_to_string_or_sym(arg)
+          @program.preprocessor_lines << "#undef #{def_name}"
+        end
+
+      when "pragma"
+        if arg = node.args.first?
+          pname = node_to_string_or_sym(arg)
+          pval = node.args[1]?.try { |a| node_to_string_or_sym(a) }
+          directive = pval ? "#pragma #{pname} #{pval}" : "#pragma #{pname}"
+          @program.preprocessor_lines << directive
+        end
+
+      when "default_precision", "precision"
+        if node.args.size >= 2
+          prec = node_to_string_or_sym(node.args[0])
+          typ = node_to_string_or_sym(node.args[1])
+          @program.default_precisions[typ] = prec
+        end
+
       when "const"
         process_const_call(node)
 
@@ -251,7 +310,7 @@ module CrShader
       when "image2d"
         process_image_call(node)
 
-      when "vertex", "fragment", "light", "start", "process", "sky", "fog"
+      when "vertex", "fragment", "light", "start", "process", "collide", "sky", "fog"
         if node.block
           synthesize_stage_def(node)
         else
@@ -368,6 +427,7 @@ module CrShader
       resource_path : String? = nil
       is_packed_array = false
       embedded_elements : Array(Crystal::ASTNode)? = nil
+      precision : String? = nil
 
       base_dir = @filename ? File.dirname(@filename.not_nil!) : nil
 
@@ -535,6 +595,8 @@ module CrShader
         when "size"
           array_size = narg.value.to_s
           is_var_array = true
+        when "precision"
+          precision = node_to_string_or_sym(narg.value)
         when "type"
           type_name = TypeInfo.normalize(narg.value.to_s)
         else
@@ -562,7 +624,8 @@ module CrShader
         is_var_array: is_var_array,
         resource_path: resource_path,
         is_packed_array: is_packed_array,
-        embedded_elements: embedded_elements
+        embedded_elements: embedded_elements,
+        precision: precision
       )
     end
 
@@ -601,11 +664,12 @@ module CrShader
       end
     end
 
-    private def process_varying_call(node : Crystal::Call)
-      # varying v_normal : Vec3, qualifier: :flat
+    private def process_varying_call(node : Crystal::Call, forced_qualifier : String? = nil)
+      # varying v_normal : Vec3, qualifier: :flat, precision: :highp
       name = ""
       type_name = "Vec3"
-      qualifier : String? = nil
+      qualifier : String? = forced_qualifier
+      precision : String? = nil
 
       if first_arg = node.args.first?
         if first_arg.is_a?(Crystal::TypeDeclaration)
@@ -620,8 +684,11 @@ module CrShader
       end
 
       node.named_args.try &.each do |narg|
-        if narg.name == "qualifier" || narg.name == "interpolation"
-          qualifier = node_to_string_or_sym(narg.value)
+        case narg.name
+        when "qualifier", "interpolation"
+          qualifier ||= node_to_string_or_sym(narg.value)
+        when "precision"
+          precision = node_to_string_or_sym(narg.value)
         end
       end
 
@@ -630,7 +697,8 @@ module CrShader
       @program.varyings << VaryingDecl.new(
         name: name,
         type_name: type_name,
-        qualifier: qualifier
+        qualifier: qualifier,
+        precision: precision
       )
     end
 

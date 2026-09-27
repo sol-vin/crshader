@@ -21,6 +21,7 @@ module CrShader
     property resource_path : String?
     property is_packed_array : Bool
     property embedded_elements : Array(Crystal::ASTNode)?
+    property precision : String?
 
     def initialize(
       @name : String,
@@ -34,7 +35,8 @@ module CrShader
       @is_var_array : Bool = false,
       @resource_path : String? = nil,
       @is_packed_array : Bool = false,
-      @embedded_elements : Array(Crystal::ASTNode)? = nil
+      @embedded_elements : Array(Crystal::ASTNode)? = nil,
+      @precision : String? = nil
     )
     end
 
@@ -47,8 +49,9 @@ module CrShader
     property name : String
     property type_name : String
     property qualifier : String? # "flat", "smooth"
+    property precision : String? # "lowp", "mediump", "highp"
 
-    def initialize(@name : String, @type_name : String, @qualifier : String? = nil)
+    def initialize(@name : String, @type_name : String, @qualifier : String? = nil, @precision : String? = nil)
     end
   end
 
@@ -162,6 +165,8 @@ module CrShader
     property shared_memories : Array(SharedMemoryDecl) = [] of SharedMemoryDecl
     property images : Array(ImageUniformDecl) = [] of ImageUniformDecl
     property includes : Array(String) = [] of String
+    property preprocessor_lines : Array(String) = [] of String
+    property default_precisions : Hash(String, String) = {} of String => String
     property compute_layout : ComputeLayout = ComputeLayout.new
     property functions : Hash(String, Crystal::Def) = {} of String => Crystal::Def
     property macros : Hash(String, Crystal::Macro) = {} of String => Crystal::Macro

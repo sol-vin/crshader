@@ -12,7 +12,8 @@ module CrShader::Validator
         "specular_schlick_ggx", "specular_toon", "specular_disabled",
         "skip_vertex_transform", "world_vertex_coords", "ensure_correct_normals",
         "shadows_disabled", "ambient_light_disabled", "fog_disabled",
-        "particle_trails", "alpha_to_coverage", "alpha_to_coverage_and_one"
+        "particle_trails", "alpha_to_coverage", "alpha_to_coverage_and_one",
+        "shadow_to_opacity", "vertex_lighting"
       },
       ShaderType::CanvasItem => Set{
         "blend_mix", "blend_add", "blend_sub", "blend_mul", "blend_premult_alpha", "blend_disabled",
@@ -36,6 +37,17 @@ module CrShader::Validator
     # Built-in variables that are strictly writable ONLY in specific stages
     # Format: variable_name => Allowed stages
     STAGE_WRITABLE_BUILTINS = {
+      # Vertex outputs
+      "VERTEX"                  => Set{"vertex"},
+      "POSITION"                => Set{"vertex", "sky"},
+      "NORMAL"                  => Set{"vertex", "fragment"},
+      "TANGENT"                 => Set{"vertex", "fragment"},
+      "BINORMAL"                => Set{"vertex", "fragment"},
+      "UV"                      => Set{"vertex"},
+      "UV2"                     => Set{"vertex"},
+      "POINT_SIZE"              => Set{"vertex"},
+      "COLOR"                   => Set{"vertex", "fragment", "light", "start", "process", "collide", "sky"},
+
       # Spatial Fragment outputs
       "ALBEDO"                  => Set{"fragment"},
       "ALPHA"                   => Set{"fragment"},
@@ -58,20 +70,24 @@ module CrShader::Validator
       "SSS_STRENGTH"            => Set{"fragment"},
       "TRANSMISSION"            => Set{"fragment"},
       "BACKLIGHT"               => Set{"fragment"},
+      "DEPTH"                   => Set{"fragment"},
 
       # Light outputs
       "DIFFUSE_LIGHT"           => Set{"light"},
       "SPECULAR_LIGHT"          => Set{"light"},
+      "SHADOW_MODULATE"         => Set{"light"},
+      "LIGHT_VERTEX"            => Set{"light"},
+      "SHADOW_VERTEX"           => Set{"light"},
 
       # Fog outputs
       "DENSITY"                 => Set{"fog"},
       "FOG_COLOR"               => Set{"fog"},
 
       # Particle outputs
-      "TRANSFORM"               => Set{"start", "process"},
-      "VELOCITY"                => Set{"start", "process"},
-      "CUSTOM"                  => Set{"start", "process"},
-      "ACTIVE"                  => Set{"start", "process"}
+      "TRANSFORM"               => Set{"start", "process", "collide"},
+      "VELOCITY"                => Set{"start", "process", "collide"},
+      "CUSTOM"                  => Set{"start", "process", "collide"},
+      "ACTIVE"                  => Set{"start", "process", "collide"}
     }
 
     # Built-in variables that can only be READ in specific stages

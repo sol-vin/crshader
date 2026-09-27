@@ -38,7 +38,7 @@ module CrShader::Validator
     getter program : ShaderProgram
     getter context : ValidationContext
 
-    ALL_KNOWN_STAGES = Set{"vertex", "fragment", "light", "start", "process", "sky", "fog", "main"}
+    ALL_KNOWN_STAGES = Set{"vertex", "fragment", "light", "start", "process", "collide", "sky", "fog", "main"}
 
     def initialize(@program : ShaderProgram, filename : String? = nil, source_lines : Array(String) = [] of String)
       @context = ValidationContext.new(filename, source_lines)

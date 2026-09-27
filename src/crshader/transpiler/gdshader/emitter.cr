@@ -26,7 +26,9 @@ module CrShader
         end
       end
       emit_header
+      emit_preprocessor
       emit_render_modes
+      emit_default_precisions
       emit_constants
       emit_structs
       emit_uniforms
@@ -38,6 +40,34 @@ module CrShader
     private def emit_header
       st = @program.shader_type.to_gdshader_keyword
       @io << "shader_type #{st};\n\n"
+    end
+
+    private def emit_preprocessor
+      has_content = false
+      unless @program.preprocessor_lines.empty?
+        @program.preprocessor_lines.each do |line|
+          @io << line << "\n"
+        end
+        has_content = true
+      end
+
+      unless @program.includes.empty?
+        @program.includes.each do |inc|
+          @io << "#include \"#{inc}\"\n"
+        end
+        has_content = true
+      end
+
+      @io << "\n" if has_content
+    end
+
+    private def emit_default_precisions
+      return if @program.default_precisions.empty?
+      @program.default_precisions.each do |typ, prec|
+        resolved_type = TypeInfo.resolve(typ, ShaderTarget::GDShader)
+        @io << "precision #{prec} #{resolved_type};\n"
+      end
+      @io << "\n"
     end
 
     private def emit_render_modes
@@ -122,7 +152,8 @@ module CrShader
         array_str = u.array_size ? "[#{u.array_size}]" : ""
         @symbol_table.register_global(u.name, "#{utype}#{array_str}")
 
-        @io << "#{qual_prefix} #{utype} #{u.name}#{array_str}"
+        prec_str = u.precision ? "#{u.precision} " : ""
+        @io << "#{qual_prefix} #{prec_str}#{utype} #{u.name}#{array_str}"
         if !u.hints.empty?
           @io << " : " << u.hints.join(", ")
         end
@@ -140,9 +171,12 @@ module CrShader
       @program.varyings.each do |v|
         vtype = TypeInfo.resolve(v.type_name, ShaderTarget::GDShader)
         @symbol_table.register_global(v.name, vtype)
-        @io << "varying "
         if qual = v.qualifier
           @io << "#{qual} "
+        end
+        @io << "varying "
+        if prec = v.precision
+          @io << "#{prec} "
         end
         @io << "#{vtype} #{v.name};\n"
       end
@@ -159,7 +193,7 @@ module CrShader
       end
     end
 
-    ALL_STAGES = ["vertex", "fragment", "light", "start", "process", "sky", "fog"]
+    ALL_STAGES = ["vertex", "fragment", "light", "start", "process", "collide", "sky", "fog"]
 
     private def emit_shader_stages
       # Emit any user-defined non-stage functions that were not in helpers

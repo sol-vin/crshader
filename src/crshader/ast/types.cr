@@ -39,7 +39,7 @@ module CrShader
       case self
       when Spatial    then ["vertex", "fragment", "light"]
       when CanvasItem then ["vertex", "fragment", "light"]
-      when Particles  then ["start", "process"]
+      when Particles  then ["start", "process", "collide"]
       when Sky        then ["sky"]
       when Fog        then ["fog"]
       when Compute    then ["main"]
@@ -108,8 +108,12 @@ module CrShader
       "Sampler2DShadow"      => TypeInfo.new("Sampler2DShadow", "sampler2DShadow", "sampler2DShadow"),
       "SamplerCubeShadow"    => TypeInfo.new("SamplerCubeShadow", "samplerCubeShadow", "samplerCubeShadow"),
       "Sampler2DArrayShadow" => TypeInfo.new("Sampler2DArrayShadow", "sampler2DArrayShadow", "sampler2DArrayShadow"),
+      "SamplerCubeArray"     => TypeInfo.new("SamplerCubeArray", "samplerCubeArray", "samplerCubeArray"),
+      "SamplerCubeArrayShadow" => TypeInfo.new("SamplerCubeArrayShadow", "samplerCubeArrayShadow", "samplerCubeArrayShadow"),
       "ISampler2D"           => TypeInfo.new("ISampler2D", "isampler2D", "isampler2D"),
       "USampler2D"           => TypeInfo.new("USampler2D", "usampler2D", "usampler2D"),
+      "ISampler2DArray"      => TypeInfo.new("ISampler2DArray", "isampler2DArray", "isampler2DArray"),
+      "USampler2DArray"      => TypeInfo.new("USampler2DArray", "usampler2DArray", "usampler2DArray"),
       "ISampler3D"           => TypeInfo.new("ISampler3D", "isampler3D", "isampler3D"),
       "USampler3D"           => TypeInfo.new("USampler3D", "usampler3D", "usampler3D"),
       "ISamplerCube"         => TypeInfo.new("ISamplerCube", "isamplerCube", "isamplerCube"),
@@ -117,8 +121,21 @@ module CrShader
       "Image2D"              => TypeInfo.new("Image2D", "image2D", "image2D"),
       "IImage2D"             => TypeInfo.new("IImage2D", "iimage2D", "iimage2D"),
       "UImage2D"             => TypeInfo.new("UImage2D", "uimage2D", "uimage2D"),
+      "Image2DArray"         => TypeInfo.new("Image2DArray", "image2DArray", "image2DArray"),
+      "IImage2DArray"        => TypeInfo.new("IImage2DArray", "iimage2DArray", "iimage2DArray"),
+      "UImage2DArray"        => TypeInfo.new("UImage2DArray", "uimage2DArray", "uimage2DArray"),
       "Image3D"              => TypeInfo.new("Image3D", "image3D", "image3D"),
+      "IImage3D"             => TypeInfo.new("IImage3D", "iimage3D", "iimage3D"),
+      "UImage3D"             => TypeInfo.new("UImage3D", "uimage3D", "uimage3D"),
+      "ImageCube"            => TypeInfo.new("ImageCube", "imageCube", "imageCube"),
+      "IImageCube"           => TypeInfo.new("IImageCube", "iimageCube", "iimageCube"),
+      "UImageCube"           => TypeInfo.new("UImageCube", "uimageCube", "uimageCube"),
       "SubpassInput"         => TypeInfo.new("SubpassInput", "subpassInput", "subpassInput"),
+
+      # Precision qualifiers
+      "lowp"                 => TypeInfo.new("lowp", "lowp", "lowp"),
+      "mediump"              => TypeInfo.new("mediump", "mediump", "mediump"),
+      "highp"                => TypeInfo.new("highp", "highp", "highp"),
 
       # Shorthand aliases & Godot math types
       "float"                => TypeInfo.new("float", "float", "float"),
