@@ -1183,7 +1183,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin
-          shards install || true
+          shards update lapis || shards install || true
           if [ -d "lib/lapis/tools/lapis/src" ]; then
             echo "Building Lapis CLI from shard..."
             crystal build lib/lapis/tools/lapis/src/lapis.cr -o bin/lapis --release -O3 --no-debug || \
@@ -1236,7 +1236,7 @@ jobs:
         run: |
           mkdir -p docs
           if [ -f "bin/lapis" ]; then
-            ./bin/lapis docs -p . -e src/crshader.cr --github=sol-vin/crshader || true
+            ./bin/lapis docs -p . -e src/crshader.cr --github=sol-vin/crshader || ./bin/lapis docs --github=sol-vin/crshader || true
           else
             shards install || true
             crystal docs src/crshader.cr --output docs || crystal docs --output docs || true
