@@ -1,0 +1,38 @@
+# =============================================================================
+# Compositor Pixelate - Hardware Compositor Compute Pass
+# =============================================================================
+# Inspired by DevPoodle/compositor-effect-library.
+# Runs directly on Godot 4's render pipeline as a compute pass, quantizing
+# screen coordinates into discrete pixel blocks with optional grid highlights.
+
+shader_type :compute
+local_size 8, 8, 1
+
+image2d color_image, set: 0, binding: 0, format: "rgba16f"
+
+uniform pixel_size : Int32 = 6, hint: hint_range(1, 32)
+uniform grid_strength : Float32 = 0.15, hint: hint_range(0.0, 1.0, 0.05)
+
+def main
+  pos = ivec2(gl_GlobalInvocationID.xy)
+  size = imageSize(color_image)
+  if pos.x >= size.x || pos.y >= size.y
+    return
+  end
+
+  # Quantize pixel coordinates
+  block_origin = (pos / pixel_size) * pixel_size
+  center_pos = block_origin + ivec2(pixel_size / 2, pixel_size / 2)
+  center_pos = clamp(center_pos, ivec2(0, 0), size - ivec2(1, 1))
+
+  sampled = imageLoad(color_image, center_pos)
+
+  # Check if current pixel lies on a block border
+  is_border = ((pos.x % pixel_size) == 0) || ((pos.y % pixel_size) == 0)
+  if is_border && (grid_strength > 0.0)
+    darkened = sampled.rgb * (1.0 - grid_strength * 0.4)
+    imageStore(color_image, pos, vec4(darkened, sampled.a))
+  else
+    imageStore(color_image, pos, sampled)
+  end
+end

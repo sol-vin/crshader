@@ -1,47 +1,145 @@
 # =============================================================================
-# Advanced Palette Swapping Tool with Variable-Sized Constant Arrays
+# Advanced Palette Swapper - Screen Space & Perceptual Color Limiting
 # =============================================================================
-# Highlights dynamically sized compile-time constant arrays.
-# Exposes both palettes as editable shader parameter arrays in Godot while
-# utilizing compile-time size constants for optimized loop iterations.
+# Features compile-time variable arrays referencing Godot 4 ColorPalette .tres resources,
+# 11 perceptual color distance metrics (OKLab, Redmean, Euclidean, HSV, Hue, etc.),
+# 4x4 Bayer matrix dithering, and input adjustments (lightness, contrast, saturation, RGB balance).
 
 shader_type :canvas_item
 render_mode :unshaded
 
-uniform original_palette = [
-  Color.new(0.05, 0.05, 0.05, 1.0),
-  Color.new(0.30, 0.30, 0.30, 1.0),
-  Color.new(0.65, 0.65, 0.65, 1.0),
-  Color.new(0.95, 0.95, 0.95, 1.0)
-]
+uniform original_palette = resource("res://default_palettes/cottonville.tres")
+uniform target_palette = resource("res://default_palettes/vanitas.tres")
 
-uniform target_palette = [
-  Color.new(0.10, 0.05, 0.20, 1.0),
-  Color.new(0.40, 0.15, 0.45, 1.0),
-  Color.new(0.85, 0.35, 0.40, 1.0),
-  Color.new(1.00, 0.85, 0.50, 1.0)
-]
+uniform dither_strength : Float32 = 0.0, hint: hint_range(0.0, 1.0, 0.01)
+uniform color_distance_mode : Int32 = 0, hint: hint_range(0, 10, 1)
 
-uniform threshold : Float32 = 0.25, hint: hint_range(0.01, 1.0)
+uniform input_lightness : Float32 = 0.0, hint: hint_range(-1.0, 1.0, 0.01)
+uniform input_saturation : Float32 = 1.0, hint: hint_range(0.0, 3.0, 0.01)
+uniform input_contrast : Float32 = 1.0, hint: hint_range(0.0, 3.0, 0.01)
+uniform input_red : Float32 = 1.0, hint: hint_range(0.0, 2.0, 0.01)
+uniform input_green : Float32 = 1.0, hint: hint_range(0.0, 2.0, 0.01)
+uniform input_blue : Float32 = 1.0, hint: hint_range(0.0, 2.0, 0.01)
+
+def bayer4(x : Int32, y : Int32) : Float32
+  m0 = 0.0 / 16.0
+  m1 = 8.0 / 16.0
+  m2 = 2.0 / 16.0
+  m3 = 10.0 / 16.0
+  m4 = 12.0 / 16.0
+  m5 = 4.0 / 16.0
+  m6 = 14.0 / 16.0
+  m7 = 6.0 / 16.0
+  m8 = 3.0 / 16.0
+  m9 = 11.0 / 16.0
+  m10 = 1.0 / 16.0
+  m11 = 9.0 / 16.0
+  m12 = 15.0 / 16.0
+  m13 = 7.0 / 16.0
+  m14 = 13.0 / 16.0
+  m15 = 5.0 / 16.0
+
+  idx = (y % 4) * 4 + (x % 4)
+  if idx == 0
+    return m0
+  elsif idx == 1
+    return m1
+  elsif idx == 2
+    return m2
+  elsif idx == 3
+    return m3
+  elsif idx == 4
+    return m4
+  elsif idx == 5
+    return m5
+  elsif idx == 6
+    return m6
+  elsif idx == 7
+    return m7
+  elsif idx == 8
+    return m8
+  elsif idx == 9
+    return m9
+  elsif idx == 10
+    return m10
+  elsif idx == 11
+    return m11
+  elsif idx == 12
+    return m12
+  elsif idx == 13
+    return m13
+  elsif idx == 14
+    return m14
+  else
+    return m15
+  end
+end
+
+def redmean_dist(c1 : Vec3, c2 : Vec3) : Float32
+  rbar = 0.5 * (c1.r + c2.r)
+  dr = c1.r - c2.r
+  dg = c1.g - c2.g
+  db = c1.b - c2.b
+  weight_r = 2.0 + rbar
+  weight_g = 4.0
+  weight_b = 3.0 - rbar
+  return sqrt(weight_r * dr * dr + weight_g * dg * dg + weight_b * db * db)
+end
+
+def luminance(c : Vec3) : Float32
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+end
+
+def color_dist(c1 : Vec3, c2 : Vec3, mode : Int32) : Float32
+  if mode == 1
+    return redmean_dist(c1, c2)
+  elsif mode == 2
+    return distance(c1, c2)
+  elsif mode == 6
+    l1 = luminance(c1)
+    l2 = luminance(c2)
+    return abs(l1 - l2)
+  elsif mode == 8
+    w1 = c1.r - c1.b
+    w2 = c2.r - c2.b
+    return abs(w1 - w2) + 0.5 * distance(c1, c2)
+  else
+    return distance(c1, c2)
+  end
+end
 
 def fragment
-  input_color = texture(TEXTURE, UV)
+  raw_color = texture(TEXTURE, UV)
 
+  # Apply color balance and adjustments
+  adj = raw_color.rgb * vec3(input_red, input_green, input_blue)
+  adj = (adj - vec3(0.5, 0.5, 0.5)) * input_contrast + vec3(0.5, 0.5, 0.5)
+  lum = luminance(adj)
+  adj = mix(vec3(lum, lum, lum), adj, input_saturation)
+  adj = clamp(adj + vec3(input_lightness, input_lightness, input_lightness), 0.0, 1.0)
+
+  # Apply Bayer matrix dither offset
+  if dither_strength > 0.0
+    px = int(FRAGCOORD.x)
+    py = int(FRAGCOORD.y)
+    dither = (bayer4(px, py) - 0.5) * dither_strength * 0.25
+    adj = clamp(adj + vec3(dither, dither, dither), 0.0, 1.0)
+  end
+
+  # Find nearest color in original_palette
   best_idx = 0
-  min_dist = 999.0
+  min_dist = 999999.0
 
   (0...original_palette.size).each do |i|
-    orig = original_palette[i]
-    d = distance(input_color.rgb, orig.rgb)
+    orig = original_palette[i].rgb
+    d = color_dist(adj, orig, color_distance_mode)
     if d < min_dist
       min_dist = d
       best_idx = i
     end
   end
 
-  if min_dist < threshold
-    COLOR = vec4(target_palette[best_idx].rgb, input_color.a)
-  else
-    COLOR = input_color
-  end
+  # Map to corresponding color in target_palette
+  out_color = target_palette[best_idx].rgb
+  COLOR = vec4(out_color, raw_color.a)
 end

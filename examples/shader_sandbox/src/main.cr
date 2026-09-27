@@ -1,5 +1,6 @@
 require "lapis"
 require "../../../src/crshader/compiler"
+require "../../../src/crshader/editor/variable_array_control"
 
 # =============================================================================
 # CrShaderSandboxApp - Interactive Split-Screen Shader Sandbox & Live Studio
@@ -58,6 +59,8 @@ node CrShaderSandboxApp < Control do
 
   @current_sample_pristine : String = ""
   @sample_files = Array(String).new
+  @inspector_vbox : Godot::VBoxContainer? = nil
+  @var_array_control : CrShader::VariableArrayControl? = nil
 
   def _ready : Void
     Godot.print("==================================================================")
@@ -151,6 +154,10 @@ node CrShaderSandboxApp < Control do
     end
     if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P4Row/P4Label")
       @param4_label = node.as?(Godot::Label)
+    end
+
+    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox")
+      @inspector_vbox = node.as?(Godot::VBoxContainer)
     end
 
     setup_syntax_highlighting
@@ -534,6 +541,30 @@ node CrShaderSandboxApp < Control do
       set_status("✔ Compiled successfully in #{elapsed_ms}ms (#{target_code.lines.size} lines)", is_error: false)
 
       apply_compiled_shader(target_code)
+
+      # Check for variable array uniforms (e.g. Color palettes or arrays)
+      if program = compiler.last_program
+        array_uni = program.uniforms.find { |u| u.is_array? || u.name.includes?("palette") }
+        if array_uni
+          if container = @inspector_vbox
+            ctrl = @var_array_control
+            if ctrl.nil?
+              ctrl = CrShader::VariableArrayControl.new
+              ctrl.configure(array_uni.name, @active_material)
+              container.call("add_child", ctrl)
+              @var_array_control = ctrl
+            else
+              ctrl.configure(array_uni.name, @active_material)
+            end
+          end
+        else
+          if ctrl = @var_array_control
+            ctrl.get_parent.try(&.call("remove_child", ctrl))
+            ctrl.call("queue_free")
+            @var_array_control = nil
+          end
+        end
+      end
     rescue ex : CrShader::ShaderError
       line_info = ex.line_number ? "line #{ex.line_number}: " : ""
       set_status("✖ Compile Error #{line_info}#{ex.message}", is_error: true)

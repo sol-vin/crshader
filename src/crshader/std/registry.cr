@@ -186,6 +186,16 @@ module CrShader
       end
     CR
 
+    COMPOSITOR_LIB = <<-CR
+      def linear_depth(depth : Float32, z_near : Float32, z_far : Float32) : Float32
+        z_near * z_far / (z_far + depth * (z_near - z_far))
+      end
+
+      def depth_sobel(d_up : Float32, d_down : Float32, d_left : Float32, d_right : Float32) : Float32
+        abs(d_up - d_down) + abs(d_left - d_right)
+      end
+    CR
+
     REGISTRY = {
       "math"            => MATH_LIB,
       "noise"           => NOISE_LIB,
@@ -195,6 +205,7 @@ module CrShader
       "tonemap"         => TONEMAP_LIB,
       "triplanar"       => TRIPLANAR_LIB,
       "post_processing" => POST_PROCESSING_LIB,
+      "compositor"      => COMPOSITOR_LIB,
     }
 
     def self.load_module(mod_name : String) : Array(Crystal::Def)

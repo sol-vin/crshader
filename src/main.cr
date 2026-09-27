@@ -4,6 +4,7 @@ require "./crshader_resource"
 require "./resource_format"
 require "./highlighter"
 require "./crshader/editor/shader_studio"
+require "./crshader/editor/variable_array_control"
 
 # =============================================================================
 # CRShaderPlugin - Full-featured Godot EditorPlugin in pure Crystal

@@ -5,6 +5,7 @@ require "./parser/dsl_parser"
 require "./parser/error_formatter"
 require "./std/registry"
 require "./optimizer/tree_shaker"
+require "./optimizer/name_optimizer"
 require "./transpiler/gdshader/emitter"
 require "./transpiler/glsl/emitter"
 
@@ -12,8 +13,10 @@ module CrShader
   class Compiler
     property target_override : ShaderTarget? = nil
     property verbose : Bool = false
+    property optimize_names : Bool = false
+    getter last_program : ShaderProgram? = nil
 
-    def initialize(@target_override : ShaderTarget? = nil, @verbose : Bool = false)
+    def initialize(@target_override : ShaderTarget? = nil, @verbose : Bool = false, @optimize_names : Bool = false)
     end
 
     def compile_file(input_path : String, output_path : String? = nil) : String
@@ -37,6 +40,7 @@ module CrShader
     def compile_source(source : String, filename : String? = nil) : String
       parser = DslParser.new(filename: filename)
       program = parser.parse(source)
+      @last_program = program
 
       # Determine target
       target = @target_override || program.target
@@ -72,6 +76,12 @@ module CrShader
 
       # Get only alive helper functions
       alive_helpers = tree_shaker.process(program)
+
+      # Optimize local variable names if requested
+      if @optimize_names
+        name_optimizer = Optimizer::NameOptimizer.new(program)
+        name_optimizer.optimize_program(program)
+      end
 
       # Emit target shader code
       io = IO::Memory.new

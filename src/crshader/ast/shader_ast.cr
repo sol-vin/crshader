@@ -18,6 +18,9 @@ module CrShader
     property qualifier : UniformQualifier
     property array_size : String?
     property is_var_array : Bool
+    property resource_path : String?
+    property is_packed_array : Bool
+    property embedded_elements : Array(Crystal::ASTNode)?
 
     def initialize(
       @name : String,
@@ -28,8 +31,15 @@ module CrShader
       @subgroup : String? = nil,
       @qualifier : UniformQualifier = UniformQualifier::Default,
       @array_size : String? = nil,
-      @is_var_array : Bool = false
+      @is_var_array : Bool = false,
+      @resource_path : String? = nil,
+      @is_packed_array : Bool = false,
+      @embedded_elements : Array(Crystal::ASTNode)? = nil
     )
+    end
+
+    def is_array? : Bool
+      !@array_size.nil? || @is_var_array || @is_packed_array
     end
   end
 
@@ -157,8 +167,11 @@ module CrShader
     property macros : Hash(String, Crystal::Macro) = {} of String => Crystal::Macro
     property requires : Set(String) = Set(String).new
     property raw_top_level_nodes : Array(Crystal::ASTNode) = [] of Crystal::ASTNode
+    property node_generations : Array(NodeGenerationTarget) = [] of NodeGenerationTarget
 
     def initialize(@target : ShaderTarget = ShaderTarget::GDShader)
     end
   end
+
+  record NodeGenerationTarget, node_type : String, class_name : String, output_path : String? = nil
 end

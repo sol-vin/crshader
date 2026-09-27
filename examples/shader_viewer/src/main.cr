@@ -1,4 +1,5 @@
 require "lapis"
+require "../../../src/crshader/editor/variable_array_control"
 
 # =============================================================================
 # CRShaderViewerApp - Interactive Shader Viewer Demo Controller
@@ -68,6 +69,8 @@ node CrShaderViewerApp < Node3D do
   @param4_label : Godot::Label? = nil
 
   @active_material : Godot::ShaderMaterial? = nil
+  @array_controls_container : Godot::VBoxContainer? = nil
+  @var_array_control : CrShader::VariableArrayControl? = nil
   @auto_rotate : Bool = true
   @rotation_speed : Float32 = 0.8_f32
   @time_elapsed : Float64 = 0.0
@@ -214,8 +217,8 @@ node CrShaderViewerApp < Node3D do
       "res://shaders/advanced_palette_swap.gdshader",
       PipelineMode::ScreenSpace,
       "Screen Space",
-      "Retro 16-color indexing lookup ramp mapping grayscale luminance to art palettes.",
-      "palette_index", "dither_blend", "saturation_boost", "contrast"
+      "Palette indexing swap with color distance metrics, lightness, and Bayer dithering.",
+      "dither_strength", "input_lightness", "input_contrast", "input_saturation"
     ),
     ShaderPreset.new(
       "Universal Dissolve Transition",
@@ -242,7 +245,41 @@ node CrShaderViewerApp < Node3D do
       "scanline_speed", "dither_strength", "phosphor_bloom", "curvature"
     ),
 
-    # 3. Compute Shaders
+    # 3. Compositor Passes
+    ShaderPreset.new(
+      "Depth Silhouette Outline",
+      "res://shaders/compositor_depth_outline.glsl",
+      PipelineMode::Compositor,
+      "Compositor Passes",
+      "Direct render pipeline compute pass drawing depth-buffer geometric edge silhouettes.",
+      "outline_thickness", "depth_threshold", "edge_threshold", "depth_scale"
+    ),
+    ShaderPreset.new(
+      "Pixel Grid & Mosaic",
+      "res://shaders/compositor_pixelate.glsl",
+      PipelineMode::Compositor,
+      "Compositor Passes",
+      "Framebuffer compute pass quantizing render targets into pixel cells with grid borders.",
+      "pixel_size", "grid_strength", "block_width", "contrast"
+    ),
+    ShaderPreset.new(
+      "GPU Compute Palette Swap",
+      "res://shaders/compositor_palette_swap.glsl",
+      PipelineMode::Compositor,
+      "Compositor Passes",
+      "High-speed compute pass mapping framebuffer pixels to target color palette.",
+      "dither_strength", "min_dist", "palette_index", "saturation"
+    ),
+    ShaderPreset.new(
+      "Render Buffer Preview",
+      "res://shaders/compositor_buffer_preview.glsl",
+      PipelineMode::Compositor,
+      "Compositor Passes",
+      "Diagnostic pipeline pass inspecting raw depth, linearized depth, or luminance channels.",
+      "preview_mode", "z_near", "z_far", "lum_bias"
+    ),
+
+    # 4. Compute Shaders
     ShaderPreset.new(
       "Acerola Compute Blur",
       "res://shaders/acerola_compute_blur.glsl",
@@ -352,6 +389,10 @@ node CrShaderViewerApp < Node3D do
       @param4_label = node.as?(Godot::Label)
     end
 
+    if node = get_node_or_null("UI/Margin/Panel/VBox")
+      @array_controls_container = node.as?(Godot::VBoxContainer)
+    end
+
     setup_ui
     select_shape("Sphere")
     filter_category("All")
@@ -362,7 +403,7 @@ node CrShaderViewerApp < Node3D do
     # Setup Category Option
     if cat_opt = @category_option
       cat_opt.call("clear")
-      categories = ["All", "Spatial Materials", "Screen Space", "Compute Simulation"]
+      categories = ["All", "Spatial Materials", "Screen Space", "Compositor Passes", "Compute Simulation"]
       categories.each_with_index do |cat, idx|
         cat_opt.call("add_item", cat, idx)
       end
@@ -534,6 +575,27 @@ node CrShaderViewerApp < Node3D do
       @post_process_rect.try &.call("set_visible", true)
       @sprite_2d.try &.call("set_visible", false)
       apply_compute_shader_preview(preset.path)
+    end
+
+    # Dynamic inspector control for variable-size arrays / palettes
+    if preset.name.includes?("Palette Swap")
+      if container = @array_controls_container
+        ctrl = @var_array_control
+        if ctrl.nil?
+          ctrl = CrShader::VariableArrayControl.new
+          ctrl.configure("target_palette", @active_material)
+          container.call("add_child", ctrl)
+          @var_array_control = ctrl
+        else
+          ctrl.configure("target_palette", @active_material)
+        end
+      end
+    else
+      if ctrl = @var_array_control
+        ctrl.get_parent.try(&.call("remove_child", ctrl))
+        ctrl.call("queue_free")
+        @var_array_control = nil
+      end
     end
   end
 

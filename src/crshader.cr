@@ -7,6 +7,7 @@ require "./crshader/watcher/file_watcher"
 require "./crshader/language"
 require "./crshader/stubs/stub_generator"
 require "./crshader/stubs"
+require "./crshader/generator/node_generator"
 
 module CrShader
   class CLI
@@ -47,9 +48,54 @@ module CrShader
         StubGenerator.write_to_file(out_target)
         puts "Generated CrShader stubs with mirrored Godot documentation -> #{out_target}"
         return
+      when "generate-node", "gen-node"
+        sub_args = args[1..-1]
+        node_type_str = "mesh3d"
+        class_name : String? = nil
+        node_out_target : String? = nil
+        input_file : String? = nil
+
+        parser = OptionParser.parse(sub_args) do |opts|
+          opts.banner = "Usage: crshader generate-node <input.crshader> [options]"
+          opts.on("-t TYPE", "--type TYPE", "Node type: mesh3d, canvas2d, compositor, or host (default: mesh3d)") { |t| node_type_str = t }
+          opts.on("-n NAME", "--name NAME", "Class name for generated Godot node") { |n| class_name = n }
+          opts.on("-o PATH", "--output PATH", "Output .cr file path") { |o| node_out_target = o }
+          opts.on("-h", "--help", "Show help") { puts opts; exit 0 }
+          opts.unknown_args { |unknown| input_file = unknown.first? }
+        end
+
+        target_file = input_file
+        unless target_file && File.exists?(target_file)
+          STDERR.puts "Error: input .crshader file not found. Usage: crshader generate-node <input.crshader>"
+          exit 1
+        end
+
+        type = case node_type_str.downcase
+               when "mesh3d", "screenspacemesh", "mesh"
+                 NodeGenerator::NodeType::ScreenSpaceMesh
+               when "canvas2d", "screenspacecanvas", "canvas"
+                 NodeGenerator::NodeType::ScreenSpaceCanvas
+               when "compositor", "compositoreffect"
+                 NodeGenerator::NodeType::CompositorEffect
+               else
+                 NodeGenerator::NodeType::MaterialHost
+               end
+
+        cname = class_name ? class_name.to_s : "#{File.basename(target_file, ".crshader").camelcase}Node"
+        generated_code = NodeGenerator.generate_from_file(target_file, type, cname)
+
+        if out_file = node_out_target
+          FileUtils.mkdir_p(File.dirname(out_file))
+          File.write(out_file, generated_code)
+          puts "Generated #{type} node '#{cname}' -> #{out_file}"
+        else
+          puts generated_code
+        end
+        return
       when "build", "compile"
         sub_args = args[1..-1]
         input_files = [] of String
+        optimize_names = false
 
         parser = OptionParser.parse(sub_args) do |parser|
           parser.banner = "Usage: crshader build <input.crshader...> [options]"
@@ -61,6 +107,7 @@ module CrShader
               exit 1
             end
           end
+          parser.on("-O", "--optimize-names", "Optimize and minify local variable names") { optimize_names = true }
           parser.on("-V", "--verbose", "Enable verbose output") { verbose = true }
           parser.on("-h", "--help", "Show help") { puts parser; exit 0 }
           parser.unknown_args do |unknown|
@@ -73,7 +120,7 @@ module CrShader
           exit 1
         end
 
-        compiler = Compiler.new(target_override: target_override, verbose: verbose)
+        compiler = Compiler.new(target_override: target_override, verbose: verbose, optimize_names: optimize_names)
         expanded_files = [] of String
         input_files.each do |f|
           if f.includes?('*') || f.includes?('?')
@@ -167,7 +214,8 @@ module CrShader
 CRSHADER: Crystal DSL & Transpiler for Godot GDShader and GLSL Compute
 
 Usage:
-  crshader build <file.crshader> [-o output] [--target gdshader|glsl]
+  crshader build <file.crshader> [-o output] [--target gdshader|glsl] [-O]
+  crshader generate-node <file.crshader> [-t mesh3d|canvas2d|compositor] [-o output.cr]
   crshader watch <path> [-o output_dir] [--target gdshader|glsl]
   crshader stubs [-o output_path]
   crshader install-addon [godot_project_dir]
@@ -177,6 +225,7 @@ Usage:
 Examples:
   crshader build player.crshader
   crshader build compute.crshader --target glsl
+  crshader generate-node effect.crshader -t compositor -o src/effect_node.cr
   crshader watch shaders/
   crshader stubs -o src/libgodot/crshader.cr
   crshader install-addon my_godot_project/
@@ -184,4 +233,6 @@ HELP
     end
   end
 end
+
+CrShader::CLI.run
 

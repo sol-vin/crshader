@@ -36,4 +36,5 @@ benchmarks/reports/
 *.tmp
 ~*
 *.uid
+scratch/
 

@@ -3,6 +3,7 @@ require "../ast/shader_ast"
 require "../ast/types"
 require "../macros/macro_engine"
 require "./error_formatter"
+require "./tres_reader"
 
 module CrShader
   class DslParser
@@ -118,6 +119,12 @@ module CrShader
         if arg = node.args.first?
           @current_subgroup = node_to_string_or_sym(arg)
         end
+
+      when "generate_node", "node_generator", "export_node"
+        type_str = node.args[0]?.try { |a| node_to_string_or_sym(a) } || "mesh3d"
+        name_str = node.args[1]?.try { |a| node_to_string_or_sym(a) } || "GeneratedNode"
+        out_path = node.args[2]?.try { |a| node_to_string_or_sym(a) }
+        @program.node_generations << NodeGenerationTarget.new(type_str, name_str, out_path)
 
       when "uniform"
         process_uniform_call(node, qualifier: UniformQualifier::Default)
@@ -252,12 +259,19 @@ module CrShader
       #   node.args[0] is TypeDeclaration(var, declared_type, value)
       # Syntax B: uniform :albedo, Color, default: ..., hint: ...
       # Syntax C: uniform my_var_array = [] or uniform my_palette = [vec4(...)]
+      # Syntax D: uniform palette = resource("res://default_palettes/cottonville.tres")
+      # Syntax E: uniform palette = PackedColorArray[Color.new(...), ...]
       name = ""
       type_name = "Float32"
       default_val : Crystal::ASTNode? = nil
       hints = [] of String
       array_size : String? = nil
       is_var_array = false
+      resource_path : String? = nil
+      is_packed_array = false
+      embedded_elements : Array(Crystal::ASTNode)? = nil
+
+      base_dir = @filename ? File.dirname(@filename.not_nil!) : nil
 
       if node.args.size >= 1
         first_arg = node.args[0]
@@ -273,6 +287,10 @@ module CrShader
               is_var_array = true
               array_size = nil
             end
+          elsif type_ast.to_s == "PackedColorArray" || type_ast.to_s == "ColorPalette"
+            type_name = "Color"
+            is_packed_array = true
+            is_var_array = true
           else
             type_name = type_ast.to_s
           end
@@ -280,6 +298,20 @@ module CrShader
           if default_val.is_a?(Crystal::ArrayLiteral)
             is_var_array = true
             array_size ||= (default_val.elements.empty? ? "16" : default_val.elements.size.to_s)
+          elsif default_val.is_a?(Crystal::Call) && (default_val.name == "resource" || default_val.name == "tres")
+            res_arg = default_val.args.first?.try { |a| node_to_string_or_sym(a) } || ""
+            resource_path = res_arg
+            is_var_array = true
+            if data = TresReader.read(res_arg, base_dir: base_dir)
+              array_size = (data.size.zero? ? "16" : data.size.to_s)
+              type_name = data.elem_type
+              nodes = data.to_ast_nodes
+              embedded_elements = nodes
+              default_val = Crystal::ArrayLiteral.new(nodes)
+            else
+              array_size ||= "16"
+              type_name = "Color"
+            end
           end
         elsif first_arg.is_a?(Crystal::Assign)
           name = first_arg.target.to_s
@@ -298,6 +330,30 @@ module CrShader
             else
               type_name = "Color"
             end
+          elsif default_val.is_a?(Crystal::Call) && (default_val.name == "resource" || default_val.name == "tres")
+            res_arg = default_val.args.first?.try { |a| node_to_string_or_sym(a) } || ""
+            resource_path = res_arg
+            is_var_array = true
+            if data = TresReader.read(res_arg, base_dir: base_dir)
+              array_size = (data.size.zero? ? "16" : data.size.to_s)
+              type_name = data.elem_type
+              nodes = data.to_ast_nodes
+              embedded_elements = nodes
+              default_val = Crystal::ArrayLiteral.new(nodes)
+            else
+              array_size = "16"
+              type_name = "Color"
+            end
+          elsif default_val.is_a?(Crystal::Call) && default_val.name == "[]" && default_val.obj.is_a?(Crystal::Path)
+            obj_name = default_val.obj.as(Crystal::Path).names.first
+            if obj_name == "PackedColorArray"
+              is_packed_array = true
+              is_var_array = true
+              type_name = "Color"
+              array_size = default_val.args.empty? ? "16" : default_val.args.size.to_s
+              embedded_elements = default_val.args
+              default_val = Crystal::ArrayLiteral.new(default_val.args)
+            end
           end
         elsif first_arg.is_a?(Crystal::SymbolLiteral) || first_arg.is_a?(Crystal::Var) || first_arg.is_a?(Crystal::Call)
           name = node_to_string_or_sym(first_arg)
@@ -307,7 +363,7 @@ module CrShader
         end
       end
 
-      # Named args: hint, default, filter, repeat, size, type
+      # Named args: hint, default, filter, repeat, size, type, resource
       node.named_args.try &.each do |narg|
         case narg.name
         when "default"
@@ -315,6 +371,34 @@ module CrShader
           if default_val.is_a?(Crystal::ArrayLiteral)
             is_var_array = true
             array_size ||= (default_val.elements.empty? ? "16" : default_val.elements.size.to_s)
+          elsif default_val.is_a?(Crystal::Call) && (default_val.name == "resource" || default_val.name == "tres")
+            res_arg = default_val.args.first?.try { |a| node_to_string_or_sym(a) } || ""
+            resource_path = res_arg
+            is_var_array = true
+            if data = TresReader.read(res_arg, base_dir: base_dir)
+              array_size = (data.size.zero? ? "16" : data.size.to_s)
+              type_name = data.elem_type
+              nodes = data.to_ast_nodes
+              embedded_elements = nodes
+              default_val = Crystal::ArrayLiteral.new(nodes)
+            else
+              array_size ||= "16"
+              type_name = "Color"
+            end
+          end
+        when "resource", "tres", "palette"
+          res_arg = node_to_string_or_sym(narg.value)
+          resource_path = res_arg
+          is_var_array = true
+          if data = TresReader.read(res_arg, base_dir: base_dir)
+            array_size ||= (data.size.zero? ? "16" : data.size.to_s)
+            type_name = data.elem_type if type_name == "Float32" || type_name.empty?
+            nodes = data.to_ast_nodes
+            embedded_elements = nodes
+            default_val ||= Crystal::ArrayLiteral.new(nodes)
+          else
+            array_size ||= "16"
+            type_name = "Color" if type_name == "Float32" || type_name.empty?
           end
         when "hint"
           if narg.value.is_a?(Crystal::ArrayLiteral)
@@ -347,7 +431,10 @@ module CrShader
         subgroup: @current_subgroup,
         qualifier: qualifier,
         array_size: array_size,
-        is_var_array: is_var_array
+        is_var_array: is_var_array,
+        resource_path: resource_path,
+        is_packed_array: is_packed_array,
+        embedded_elements: embedded_elements
       )
     end
 

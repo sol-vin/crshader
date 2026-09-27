@@ -1,0 +1,39 @@
+# =============================================================================
+# Compositor Depth Outline - Hardware Compositor Compute Pass
+# =============================================================================
+# Inspired by DevPoodle/compositor-effect-library.
+# Runs directly on Godot 4's render pipeline as a compute pass, sampling scene
+# depth buffer to draw stylized geometric silhouette outlines.
+
+shader_type :compute
+local_size 8, 8, 1
+
+image2d color_image, set: 0, binding: 0, format: "rgba16f"
+image2d depth_image, set: 0, binding: 1, format: "r32f"
+
+uniform outline_color : Color = Color.new(0.05, 0.05, 0.08, 1.0)
+uniform outline_thickness : Int32 = 1, hint: hint_range(1, 4)
+uniform depth_threshold : Float32 = 0.005, hint: hint_range(0.0001, 0.05, 0.0005)
+
+def main
+  pos = ivec2(gl_GlobalInvocationID.xy)
+  size = imageSize(color_image)
+  if pos.x >= size.x || pos.y >= size.y
+    return
+  end
+
+  center_depth = imageLoad(depth_image, pos).r
+  d_up = imageLoad(depth_image, pos + ivec2(0, -outline_thickness)).r
+  d_down = imageLoad(depth_image, pos + ivec2(0, outline_thickness)).r
+  d_left = imageLoad(depth_image, pos + ivec2(-outline_thickness, 0)).r
+  d_right = imageLoad(depth_image, pos + ivec2(outline_thickness, 0)).r
+
+  depth_diff = abs(center_depth - d_up) + abs(center_depth - d_down) + abs(center_depth - d_left) + abs(center_depth - d_right)
+
+  curr_color = imageLoad(color_image, pos)
+  if depth_diff > depth_threshold
+    imageStore(color_image, pos, vec4(outline_color.rgb, 1.0))
+  else
+    imageStore(color_image, pos, curr_color)
+  end
+end

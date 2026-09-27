@@ -1,0 +1,43 @@
+# =============================================================================
+# Compositor Buffer Preview - Diagnostic Buffer Inspector Compute Pass
+# =============================================================================
+# Inspired by DevPoodle/compositor-effect-library Sample Effect.
+# Visualizes raw depth, linearized depth, or color channels.
+
+shader_type :compute
+local_size 8, 8, 1
+
+image2d color_image, set: 0, binding: 0, format: "rgba16f"
+image2d depth_image, set: 0, binding: 1, format: "r32f"
+
+uniform preview_mode : Int32 = 0, hint: hint_range(0, 3)
+uniform z_near : Float32 = 0.05
+uniform z_far : Float32 = 100.0
+
+def main
+  pos = ivec2(gl_GlobalInvocationID.xy)
+  size = imageSize(color_image)
+  if pos.x >= size.x || pos.y >= size.y
+    return
+  end
+
+  curr_color = imageLoad(color_image, pos)
+  depth_val = imageLoad(depth_image, pos).r
+
+  if preview_mode == 1
+    # Raw Depth
+    imageStore(color_image, pos, vec4(depth_val, depth_val, depth_val, 1.0))
+  elsif preview_mode == 2
+    # Linearized Depth Ramp
+    lin = z_near * z_far / (z_far + depth_val * (z_near - z_far))
+    lin_norm = clamp(lin / z_far, 0.0, 1.0)
+    imageStore(color_image, pos, vec4(lin_norm, lin_norm, lin_norm, 1.0))
+  elsif preview_mode == 3
+    # Grayscale Luminance
+    lum = 0.2126 * curr_color.r + 0.7152 * curr_color.g + 0.0722 * curr_color.b
+    imageStore(color_image, pos, vec4(lum, lum, lum, 1.0))
+  else
+    # Full Color
+    imageStore(color_image, pos, curr_color)
+  end
+end
