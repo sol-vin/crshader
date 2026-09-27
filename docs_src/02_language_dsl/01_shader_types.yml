@@ -1,0 +1,56 @@
+id: A_SHADER_TYPES
+title: "Shader Types & Render Modes"
+summary: "Canvas item (2D), spatial (3D), particles, sky, fog, and compute shader types with render modes."
+track: "02_language_dsl"
+root_module: "CrShader::Docs"
+overview: |
+  CRShader supports all Godot 4 shader types (`canvas_item`, `spatial`, `particles`, `sky`, `fog`)
+  as well as GLSL compute kernels. The shader type and render modes determine the target graphics
+  pipeline, available built-in variables, and execution context.
+related_sources:
+  - "bin/crshader/src/crshader/ast/types.cr"
+  - "bin/crshader/src/crshader/language/shader_types.cr"
+sections:
+  - id: topic_01_shader_types
+    title: "Declaring Shader Types"
+    summary: "The shader_type directive and supported graphics domains."
+    content: |
+      Every `.crshader` file begins with a `shader_type` declaration:
+
+      - `:canvas_item`: 2D rendering for UI, Sprites, TileMaps, and 2D post-processing.
+      - `:spatial`: 3D rendering for meshes, models, terrain, and PBR surfaces.
+      - `:particles`: GPU-accelerated particle simulation (2D or 3D).
+      - `:sky`: Custom skyboxes, atmospheric scattering, and panoramic backgrounds.
+      - `:fog`: Volumetric fog shading for atmospheric 3D environments.
+      - `:compute`: Parallel GPU compute kernels running arbitrary arithmetic or image processing.
+    examples:
+      - |
+        ```crystal
+        # 2D Shader
+        shader_type :canvas_item
+
+        # 3D Spatial Shader
+        shader_type :spatial
+
+        # Compute Kernel
+        shader_type :compute
+        ```
+
+  - id: topic_02_render_modes
+    title: "Render Modes & Pipeline Flags"
+    summary: "Configuring pipeline flags such as unshaded, blend modes, depth draw, and culling."
+    content: |
+      Render modes modify the default behavior of Godot's rendering pipeline. Multiple render modes
+      can be declared on a single line or across multiple statements:
+
+      - `render_mode :unshaded`: Disables lighting calculations; fragment output is treated as direct RGB color.
+      - `render_mode :blend_add`, `:blend_sub`, `:blend_mul`: Non-standard alpha blending equations.
+      - `render_mode :cull_disabled`, `:cull_front`, `:cull_back`: Polygon face culling rules.
+      - `render_mode :depth_draw_always`, `:depth_draw_never`: Custom depth buffer writing behavior.
+      - `render_mode :world_vertex_coords`: Forces vertex processing in global world coordinates instead of local object space.
+    examples:
+      - |
+        ```crystal
+        shader_type :spatial
+        render_mode :unshaded, :cull_disabled, :depth_draw_always
+        ```

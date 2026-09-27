@@ -28,7 +28,7 @@ examples/**/addons/crystal_integration/
 # Crystal dependencies
 lib/
 shard.lock
-docs/
+/docs/
 
 # Test artifacts
 validation_log.txt

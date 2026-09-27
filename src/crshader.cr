@@ -8,6 +8,9 @@ require "./crshader/language"
 require "./crshader/stubs/stub_generator"
 require "./crshader/stubs"
 require "./crshader/generator/node_generator"
+{% unless flag?(:release) %}
+require "./docs"
+{% end %}
 
 module CrShader
   class CLI

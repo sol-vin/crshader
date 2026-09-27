@@ -1,0 +1,45 @@
+id: B_SHADER_VIEWER
+title: "Interactive Shader Viewer & Sandbox"
+summary: "Standalone showcase application featuring 20+ procedural shaders, 3D mesh switcher, and live sandbox."
+track: "04_showcase_and_benchmarks"
+root_module: "CrShader::Docs"
+overview: |
+  CRShader bundles two standalone interactive applications: the **Shader Viewer** (a gallery
+  inspecting 20+ shaders on various 3D primitives and screen quads) and the **Live Shader Sandbox**
+  (a split-screen live coding environment).
+related_sources:
+  - "bin/crshader/examples/shader_viewer"
+  - "bin/crshader/examples/shader_sandbox"
+  - "bin/crshader/Makefile"
+sections:
+  - id: topic_01_shader_viewer
+    title: "Shader Viewer Showcase"
+    summary: "Exploring the bundled gallery of 20+ procedural shaders across 3D meshes and post-processing."
+    content: |
+      The Shader Viewer demonstrates real-world CRShader applications across a rich variety of techniques:
+
+      - **Water & Fluid Simulation**: Dynamic foam lines, refraction, and vertex wave displacement.
+      - **Stylized & Retro**: PSX affine texture warping, vertex snapping, dithering, and CRT phosphor scanlines.
+      - **Painterly Post-Processing**: Kuwahara edge-preserving blur and oil-painting effects.
+      - **Procedural Volumetrics**: Raymarched clouds, fire particles, and plasma spheres.
+
+      Launch the viewer with:
+      ```bash
+      make viewer
+      ```
+
+  - id: topic_02_live_sandbox
+    title: "Split-Screen Live Shader Sandbox"
+    summary: "Live in-game shader authoring environment with real-time viewport feedback."
+    content: |
+      The Shader Sandbox provides an in-game live coding environment:
+
+      - Left pane contains an embedded text editor with live syntax coloring.
+      - Right viewport renders the active scene in real time (2D canvas, 3D mesh, or screen quad).
+      - Bottom bar provides quick presets to load sample shaders or switch 3D meshes (Cube, Sphere, Cylinder, Torus, Prism, Plane).
+      - Parameter sliders allow live uniform adjustments with immediate GPU visual updates.
+
+      Launch the sandbox with:
+      ```bash
+      make sandbox
+      ```

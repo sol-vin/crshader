@@ -1,0 +1,48 @@
+id: A_IN_EDITOR_HIGHLIGHTER
+title: "ScriptEditor Syntax Highlighting"
+summary: "How CRShader hooks into Godot's ScriptEditor to provide real-time syntax coloring for .crshader files."
+track: "03_editor_tooling"
+root_module: "CrShader::Docs"
+overview: |
+  CRShader includes a custom `EditorSyntaxHighlighter` implementation that integrates directly into
+  Godot's built-in `ScriptEditor`. When opening any `.crshader` file in Godot, the editor automatically
+  highlights keywords, types, built-ins, and numbers according to your active editor theme.
+related_sources:
+  - "bin/crshader/src/highlighter.cr"
+  - "bin/crshader/src/main.cr"
+sections:
+  - id: topic_01_highlighter_architecture
+    title: "Syntax Highlighter Architecture"
+    summary: "Extending Godot::EditorSyntaxHighlighter to tokenize CRShader source files."
+    content: |
+      The syntax highlighter is implemented in `src/highlighter.cr` via `CRShaderSyntaxHighlighter < EditorSyntaxHighlighter`.
+      Godot queries this class line-by-line during text editing in `ScriptEditor`:
+
+      - The class overrides `_get_line_syntax_highlighting(line_idx : Int32) : Dictionary`.
+      - It returns a color dictionary mapping column offsets to token colors.
+      - Colors are dynamically queried from the editor's active theme settings so highlighting respects dark and light themes.
+    examples:
+      - |
+        ```crystal
+        node CRShaderSyntaxHighlighter < EditorSyntaxHighlighter do
+          def _get_name : String
+            "CRShader"
+          end
+
+          def _get_supported_languages : PackedStringArray
+            PackedStringArray.new(["crshader", "cr"])
+          end
+        end
+        ```
+
+  - id: topic_02_token_categories
+    title: "Highlighted Token Categories"
+    summary: "Color mappings for language constructs, types, and stage declarations."
+    content: |
+      The highlighter recognizes several distinct token categories:
+
+      - **Keywords**: `shader_type`, `render_mode`, `uniform`, `varying`, `stage`, `do`, `end`, `if`, `else`, `return`.
+      - **Types**: `float`, `int`, `uint`, `bool`, `vec2`, `vec3`, `vec4`, `mat2`, `mat3`, `mat4`, `sampler2D`.
+      - **Built-in Variables**: `TIME`, `PI`, `UV`, `COLOR`, `VERTEX`, `NORMAL`, `ALBEDO`, `ROUGHNESS`, `METALLIC`.
+      - **Numbers & Constants**: Floats (`1.5`, `0.1_f32`), hex literals, and boolean literals (`true`, `false`).
+      - **Comments**: Full-line or trailing `# comments` are highlighted with editor comment styling.

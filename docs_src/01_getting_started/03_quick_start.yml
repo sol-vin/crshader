@@ -1,0 +1,70 @@
+id: C_QUICK_START
+title: "Quick Start: Authoring Your First Shader"
+summary: "Writing a canvas_item tint shader, assigning it to a Sprite2D, and inspecting live compilation."
+track: "01_getting_started"
+root_module: "CrShader::Docs"
+overview: |
+  This tutorial guides you through creating your first `.crshader` file, assigning it to a 2D sprite
+  in Godot, tweaking uniform parameters, and understanding how CRShader compiles your code into
+  Godot's native shader pipeline.
+related_sources:
+  - "bin/crshader/examples/shader_viewer/shaders/water_2d.crshader"
+  - "bin/crshader/src/crshader_resource.cr"
+sections:
+  - id: topic_01_first_canvas_shader
+    title: "Writing a CanvasItem Shader"
+    summary: "Creating a water tint shader using CRShader's declarative Crystal syntax."
+    content: |
+      Create a new text file named `res://shaders/water_tint.crshader`.
+      In this file, declare the shader type, uniforms with inspector hints, and the fragment stage:
+    examples:
+      - |
+        ```crystal
+        shader_type :canvas_item
+        render_mode :unshaded
+
+        # Uniform parameters with default values
+        uniform tint : vec4 = vec4(0.2, 0.6, 1.0, 1.0)
+        uniform speed : float = 1.5
+        uniform frequency : float = 10.0
+
+        # Fragment stage calculates animated wave distortion and color tint
+        stage :fragment do
+          uv = UV + vec2(sin(TIME * speed + UV.y * frequency) * 0.02, 0.0)
+          col = texture(TEXTURE, uv) * tint
+          COLOR = col
+        end
+        ```
+
+  - id: topic_02_assigning_to_material
+    title: "Assigning Directly to a ShaderMaterial"
+    summary: "Hooking up the .crshader resource in the Godot Inspector without manual export."
+    content: |
+      1. In your Godot scene, select any `Sprite2D`, `TextureRect`, or `ColorRect` node.
+      2. In the Inspector, expand the **Material** property and choose **New ShaderMaterial**.
+      3. Click on the newly created `ShaderMaterial` to open its properties.
+      4. Drag `res://shaders/water_tint.crshader` from the FileSystem dock into the **Shader** slot.
+      5. The sprite immediately updates in the editor viewport!
+      6. Expand **Shader Parameters** to see your declared `tint`, `speed`, and `frequency` uniforms ready for adjustment.
+
+  - id: topic_03_inspecting_output
+    title: "Inspecting Transpiled Output in CRShader Studio"
+    summary: "Opening the dock to inspect generated GDShader code and verify syntax."
+    content: |
+      With `water_tint.crshader` selected, open the **CRShader Studio** dock at the bottom of the Godot Editor.
+      The left pane displays your Crystal source code, while the right pane shows the transpiled GDShader 4.x code:
+
+      ```glsl
+      shader_type canvas_item;
+      render_mode unshaded;
+
+      uniform vec4 tint = vec4(0.2, 0.6, 1.0, 1.0);
+      uniform float speed = 1.5;
+      uniform float frequency = 10.0;
+
+      void fragment() {
+          vec2 uv = UV + vec2(sin(TIME * speed + UV.y * frequency) * 0.02, 0.0);
+          vec4 col = texture(TEXTURE, uv) * tint;
+          COLOR = col;
+      }
+      ```

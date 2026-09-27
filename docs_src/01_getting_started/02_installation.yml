@@ -1,0 +1,67 @@
+id: B_INSTALLATION
+title: "Installation & Project Setup"
+summary: "Adding CRShader to Godot projects, configuring shards, and building the standalone compiler."
+track: "01_getting_started"
+root_module: "CrShader::Docs"
+overview: |
+  Setting up CRShader can be done either as an in-project GDExtension addon for the Godot Editor,
+  or as a standalone command-line compiler for automated CI pipelines and pre-compilation workflows.
+related_sources:
+  - "bin/crshader/shard.yml"
+  - "bin/crshader/Makefile"
+  - "bin/crshader/src/cli.cr"
+sections:
+  - id: topic_01_shard_dependency
+    title: "Adding the Shard Dependency"
+    summary: "Configuring shard.yml to include CRShader in your Crystal project."
+    content: |
+      To author shaders or use the programmatic compiler API inside your Crystal game or tooling,
+      add `crshader` to your project's `shard.yml`:
+
+      ```yaml
+      dependencies:
+        crshader:
+          github: sol-vin/crshader
+          branch: master
+      ```
+
+      Run `shards install` to fetch CRShader and its dependencies.
+    examples:
+      - |
+        ```bash
+        shards install
+        shards check
+        ```
+
+  - id: topic_02_cli_compilation
+    title: "Building the Standalone CLI"
+    summary: "Compiling the standalone crshader executable for command-line use."
+    content: |
+      The standalone `crshader` executable provides batch compilation, file watching, and IDE
+      stub generation without launching the Godot Editor.
+
+      Run `make` inside the `crshader` repository, or compile `src/cli.cr` directly:
+    examples:
+      - |
+        ```bash
+        # Via Makefile:
+        make
+
+        # Or direct crystal build:
+        crystal build src/cli.cr -o bin/crshader --release
+        ```
+
+  - id: topic_03_addon_installation
+    title: "Installing the Godot Editor Addon"
+    summary: "Installing the GDExtension plugin into a target Godot project."
+    content: |
+      To install CRShader into an existing Godot project:
+
+      1. Use the CLI tool:
+         ```bash
+         bin/crshader install-addon /path/to/godot_project
+         ```
+      2. Or copy the `addons/crshader` folder directly into your project's `addons/` directory.
+      3. Open Godot, navigate to **Project -> Project Settings -> Plugins**, and check **Enable** next to **CRShader**.
+    pitfalls:
+      - "Ensure your Godot project uses Godot 4.8 or later; earlier 4.x versions lack certain GDExtension resource loader hooks."

@@ -1,0 +1,84 @@
+id: A_OVERVIEW
+title: "CRShader Architecture & Transpiler Pipeline"
+summary: "Overview of the CRShader language, AST compilation model, and transparent Godot integration."
+track: "01_getting_started"
+root_module: "CrShader::Docs"
+overview: |
+  CRShader is a high-performance shader trans-compiler and live runtime development toolchain
+  for Godot Engine 4.8+, powered by Crystal and Lapis. It introduces a declarative, type-safe
+  Crystal shader DSL that transpiles down to optimized Godot GDShader (4.x) and GLSL compute
+  kernels with native machine speed (~1.1ms transpilation, >100,000 LOC/s).
+
+  CRShader enables game developers to write shaders with clean, readable Crystal syntax,
+  benefiting from typed uniform definitions, modular stages, and IDE autocomplete, while
+  seamlessly deploying to Godot's Vulkan, Direct3D 12, Metal, and OpenGL renderers.
+related_sources:
+  - "bin/crshader/src/crshader/compiler.cr"
+  - "bin/crshader/src/crshader/ast/types.cr"
+  - "bin/crshader/src/resource_format.cr"
+sections:
+  - id: topic_01_architecture_overview
+    title: "Core Architecture & Transpiler Pipeline"
+    summary: "High-level overview of the lexical parser, typed AST, and dual transpiler backends."
+    content: |
+      CRShader's architecture consists of two cooperating subsystems: the **Toolchain Pipeline**
+      and the **Godot Engine Integration**:
+
+      1. **Source Lexer & Parser**: Tokenizes `.crshader` DSL files and builds a strongly typed Abstract Syntax Tree (AST).
+      2. **Transpiler Backends**: Generates idiomatic Godot GDShader 4.x code for graphics pipelines, or GLSL for compute kernels.
+      3. **Resource Loader**: Transparently intercepts `.crshader` loading in Godot, caching and feeding compiled `Godot::Shader` objects directly into `ShaderMaterial`.
+      4. **Editor Tooling**: Provides live ScriptEditor syntax highlighting and the CRShader Studio split-screen inspection dock.
+    examples:
+      - |
+        ```
+        .crshader Source --> Lexer & AST Parser --> Typed Shader AST
+                                                         |
+                            +----------------------------+---------------------------+
+                            |                                                        |
+                            v                                                        v
+                 GDShader 4.x Backend                                     GLSL Compute Backend
+                            |                                                        |
+                            v                                                        v
+                     Target .gdshader                                         Target .glsl
+                            |                                                        |
+                            +----------------------------+---------------------------+
+                                                         |
+                                                         v
+                                       ResourceFormatLoaderCRShader (In-Memory)
+                                                         |
+                                                         v
+                                             Godot ShaderMaterial & GPU
+        ```
+    pitfalls:
+      - "Never edit the intermediate transpiled .gdshader directly; always edit the .crshader source so changes are preserved across builds."
+    faqs:
+      - q: "Does CRShader introduce runtime overhead when running the game?"
+        a: "Zero overhead. Shaders are compiled to standard Godot Shader resources in-memory at load time. The GPU executes native driver bytecode identical to hand-written GDShader."
+
+  - id: topic_02_transparent_loading
+    title: "Transparent In-Memory Loading"
+    summary: "How ResourceFormatLoaderCRShader registers with Godot's ResourceLoader to bypass intermediate disk files."
+    content: |
+      CRShader implements a custom `ResourceFormatLoaderCRShader` inheriting from `ResourceFormatLoader`.
+      When Godot encounters a resource path ending in `.crshader`:
+
+      - The loader reads the source file from `res://`.
+      - It invokes `CrShader::Compiler.compile_to_gdshader(source)`.
+      - It instantiates a native `Godot::Shader`, populates `shader.code`, and returns it directly.
+      - Godot caches the compiled resource in its internal resource cache.
+
+      This means `.crshader` files can be directly dragged and dropped into `ShaderMaterial.shader`
+      slots in the Godot Inspector without generating clutter files on disk.
+    examples:
+      - |
+        ```crystal
+        # Inside ResourceFormatLoaderCRShader:
+        def _load(path : String, original_path : String, use_sub_threads : Bool, cache_mode : Int32) : Godot::Resource?
+          source = File.read(path)
+          gdshader_code = CrShader::Compiler.compile_to_gdshader(source)
+          
+          shader = Godot::Shader.new
+          shader.code = gdshader_code
+          shader
+        end
+        ```

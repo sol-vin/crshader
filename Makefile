@@ -156,8 +156,8 @@ test spec:
 	@crystal spec
 
 docs:
-	@echo [CRShader] Generating HTML API documentation from language stubs...
-	@crystal docs src/crshader.cr --output docs
+	@echo [CRShader] Generating HTML API documentation...
+	@$(LAPIS) docs -p . -e src/crshader.cr --github=sol-vin/crshader
 
 help:
 	@echo ===================================================================
