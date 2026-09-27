@@ -1,0 +1,43 @@
+# =============================================================================
+# Acerola Compute: Image Blur Filter (Gaussian / Box Blur)
+# =============================================================================
+# Inspired by Garrett Gunnell's Acerola Compute shader tutorials for Godot.
+# Computes a 2D convolution blur over an input texture into an output texture.
+
+shader_type :compute
+local_size 8, 8, 1
+
+image2d input_image, format: :rgba32f, set: 0, binding: 0
+image2d output_image, format: :rgba32f, set: 0, binding: 1
+
+uniform blur_radius : Int32 = 3
+uniform blur_strength : Float32 = 1.0
+
+def main
+  pixel_coord = ivec2(gl_GlobalInvocationID.xy)
+  img_size = imageSize(input_image)
+
+  if pixel_coord.x >= img_size.x || pixel_coord.y >= img_size.y
+    return
+  end
+
+  accum_color = vec4(0.0)
+  total_weight = 0.0
+
+  (-blur_radius..blur_radius).each do |ox|
+    (-blur_radius..blur_radius).each do |oy|
+      sample_coord = pixel_coord + ivec2(ox, oy)
+      sample_coord = clamp(sample_coord, ivec2(0, 0), img_size - ivec2(1, 1))
+
+      dist_sq = float(ox * ox + oy * oy)
+      weight = exp(-dist_sq / (2.0 * blur_strength * blur_strength + 0.0001))
+
+      color = imageLoad(input_image, sample_coord)
+      accum_color += color * weight
+      total_weight += weight
+    end
+  end
+
+  final_color = accum_color / max(total_weight, 0.0001)
+  imageStore(output_image, pixel_coord, final_color)
+end

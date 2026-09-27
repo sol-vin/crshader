@@ -13,7 +13,7 @@ shader_parameter/metallic = 0.2
 shader_parameter/wave_speed = 2.0
 shader_parameter/wave_height = 0.15
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_postprocess"]
 shader = ExtResource("2_water")
 shader_parameter/speed = 1.2
 shader_parameter/wave_intensity = 0.05
@@ -26,16 +26,41 @@ height = 2.0
 radial_segments = 64
 rings = 32
 
-[sub_resource type="TorusMesh" id="TorusMesh_ring"]
+[sub_resource type="BoxMesh" id="BoxMesh_preview"]
 material = SubResource("ShaderMaterial_spatial")
-inner_radius = 1.4
+size = Vector3(1.8, 1.8, 1.8)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_preview"]
+material = SubResource("ShaderMaterial_spatial")
+top_radius = 0.9
+bottom_radius = 0.9
+height = 2.0
+radial_segments = 48
+
+[sub_resource type="TorusMesh" id="TorusMesh_preview"]
+material = SubResource("ShaderMaterial_spatial")
+inner_radius = 1.1
 outer_radius = 1.6
 rings = 48
 ring_segments = 24
 
+[sub_resource type="PrismMesh" id="PrismMesh_preview"]
+material = SubResource("ShaderMaterial_spatial")
+size = Vector3(2.0, 2.0, 1.5)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_preview"]
+material = SubResource("ShaderMaterial_spatial")
+radius = 0.8
+height = 2.2
+radial_segments = 48
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_preview"]
+material = SubResource("ShaderMaterial_spatial")
+size = Vector2(2.5, 2.5)
+
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_viewer"]
-sky_top_color = Color(0.1, 0.15, 0.3, 1)
-sky_horizon_color = Color(0.4, 0.5, 0.65, 1)
+sky_top_color = Color(0.12, 0.18, 0.32, 1)
+sky_horizon_color = Color(0.45, 0.55, 0.7, 1)
 
 [sub_resource type="Sky" id="Sky_viewer"]
 sky_material = SubResource("ProceduralSkyMaterial_viewer")
@@ -44,7 +69,7 @@ sky_material = SubResource("ProceduralSkyMaterial_viewer")
 background_mode = 2
 sky = SubResource("Sky_viewer")
 ambient_light_source = 3
-ambient_light_color = Color(0.65, 0.75, 0.9, 1)
+ambient_light_color = Color(0.7, 0.8, 0.95, 1)
 
 [node name="Viewer" type="CrShaderViewerApp"]
 
@@ -64,25 +89,61 @@ current = true
 [node name="SphereMesh" type="MeshInstance3D" parent="Pivot3D"]
 mesh = SubResource("SphereMesh_preview")
 
+[node name="CubeMesh" type="MeshInstance3D" parent="Pivot3D"]
+visible = false
+mesh = SubResource("BoxMesh_preview")
+
+[node name="CylinderMesh" type="MeshInstance3D" parent="Pivot3D"]
+visible = false
+mesh = SubResource("CylinderMesh_preview")
+
 [node name="TorusMesh" type="MeshInstance3D" parent="Pivot3D"]
+visible = false
 transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 0, 0)
-mesh = SubResource("TorusMesh_ring")
+mesh = SubResource("TorusMesh_preview")
+
+[node name="PrismMesh" type="MeshInstance3D" parent="Pivot3D"]
+visible = false
+mesh = SubResource("PrismMesh_preview")
+
+[node name="CapsuleMesh" type="MeshInstance3D" parent="Pivot3D"]
+visible = false
+mesh = SubResource("CapsuleMesh_preview")
+
+[node name="PlaneMesh" type="MeshInstance3D" parent="Pivot3D"]
+visible = false
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 0, 0)
+mesh = SubResource("PlaneMesh_preview")
+
+[node name="ScreenSpaceLayer" type="CanvasLayer" parent="."]
+layer = 0
+
+[node name="PostProcessRect" type="ColorRect" parent="ScreenSpaceLayer"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+material = SubResource("ShaderMaterial_postprocess")
 
 [node name="Preview2D" type="Node2D" parent="."]
 
 [node name="Sprite2D" type="Sprite2D" parent="Preview2D"]
 visible = false
-material = SubResource("ShaderMaterial_water")
+material = SubResource("ShaderMaterial_postprocess")
 position = Vector2(640, 420)
 scale = Vector2(2.5, 2.5)
 texture = ExtResource("3_icon")
 
 [node name="UI" type="CanvasLayer" parent="."]
+layer = 1
 
 [node name="Margin" type="MarginContainer" parent="UI"]
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 150.0
+offset_bottom = 220.0
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 16
@@ -103,7 +164,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.65, 0.88, 1, 1)
 theme_override_font_sizes/font_size = 18
-text = "🔮 CRShader Interactive Viewer"
+text = "🔮 CRShader Interactive Showcase Viewer"
 
 [node name="FPSLabel" type="Label" parent="UI/Margin/Panel/VBox/Header"]
 layout_mode = 2
@@ -111,21 +172,54 @@ theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
 theme_override_font_sizes/font_size = 14
 text = "Performance: 60 FPS (16.6 ms)"
 
-[node name="Controls" type="HBoxContainer" parent="UI/Margin/Panel/VBox"]
+[node name="ControlsRow1" type="HBoxContainer" parent="UI/Margin/Panel/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="PrevBtn" type="Button" parent="UI/Margin/Panel/VBox/Controls"]
+[node name="CategoryLabel" type="Label" parent="UI/Margin/Panel/VBox/ControlsRow1"]
 layout_mode = 2
-text = "◀ Prev"
+theme_override_font_sizes/font_size = 13
+text = "Category:"
 
-[node name="ShaderOption" type="OptionButton" parent="UI/Margin/Panel/VBox/Controls"]
+[node name="CategoryOption" type="OptionButton" parent="UI/Margin/Panel/VBox/ControlsRow1"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="NextBtn" type="Button" parent="UI/Margin/Panel/VBox/Controls"]
+[node name="PrevBtn" type="Button" parent="UI/Margin/Panel/VBox/ControlsRow1"]
+layout_mode = 2
+text = "◀ Prev"
+
+[node name="ShaderOption" type="OptionButton" parent="UI/Margin/Panel/VBox/ControlsRow1"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NextBtn" type="Button" parent="UI/Margin/Panel/VBox/ControlsRow1"]
 layout_mode = 2
 text = "Next ▶"
+
+[node name="ControlsRow2" type="HBoxContainer" parent="UI/Margin/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ShapeLabel" type="Label" parent="UI/Margin/Panel/VBox/ControlsRow2"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Mesh Shape:"
+
+[node name="ShapeOption" type="OptionButton" parent="UI/Margin/Panel/VBox/ControlsRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ModeLabel" type="Label" parent="UI/Margin/Panel/VBox/ControlsRow2"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 13
+text = "Mode: Material (3D Surface)"
+
+[node name="AutoRotateCheck" type="CheckBox" parent="UI/Margin/Panel/VBox/ControlsRow2"]
+layout_mode = 2
+button_pressed = true
+text = "Auto Rotate"
 
 [node name="Info" type="VBoxContainer" parent="UI/Margin/Panel/VBox"]
 layout_mode = 2
@@ -143,44 +237,86 @@ theme_override_colors/font_color = Color(0.75, 0.75, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "3D vertex displacement wave and dynamic spatial lighting."
 
-[node name="Sliders" type="HBoxContainer" parent="UI/Margin/Panel/VBox"]
+[node name="SlidersRow1" type="HBoxContainer" parent="UI/Margin/Panel/VBox"]
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 20
 
-[node name="SpeedRow" type="HBoxContainer" parent="UI/Margin/Panel/VBox/Sliders"]
+[node name="Param1Row" type="HBoxContainer" parent="UI/Margin/Panel/VBox/SlidersRow1"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="SpeedLabel" type="Label" parent="UI/Margin/Panel/VBox/Sliders/SpeedRow"]
+[node name="Param1Label" type="Label" parent="UI/Margin/Panel/VBox/SlidersRow1/Param1Row"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 text = "Speed:"
 
-[node name="SpeedSlider" type="HSlider" parent="UI/Margin/Panel/VBox/Sliders/SpeedRow"]
+[node name="Param1Slider" type="HSlider" parent="UI/Margin/Panel/VBox/SlidersRow1/Param1Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 min_value = 0.1
-max_value = 4.0
+max_value = 5.0
 step = 0.1
 value = 1.0
 
-[node name="IntensityRow" type="HBoxContainer" parent="UI/Margin/Panel/VBox/Sliders"]
+[node name="Param2Row" type="HBoxContainer" parent="UI/Margin/Panel/VBox/SlidersRow1"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="IntensityLabel" type="Label" parent="UI/Margin/Panel/VBox/Sliders/IntensityRow"]
+[node name="Param2Label" type="Label" parent="UI/Margin/Panel/VBox/SlidersRow1/Param2Row"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 text = "Intensity:"
 
-[node name="IntensitySlider" type="HSlider" parent="UI/Margin/Panel/VBox/Sliders/IntensityRow"]
+[node name="Param2Slider" type="HSlider" parent="UI/Margin/Panel/VBox/SlidersRow1/Param2Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
-min_value = 0.1
-max_value = 2.0
-step = 0.1
+min_value = 0.0
+max_value = 3.0
+step = 0.05
 value = 1.0
+
+[node name="SlidersRow2" type="HBoxContainer" parent="UI/Margin/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Param3Row" type="HBoxContainer" parent="UI/Margin/Panel/VBox/SlidersRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Param3Label" type="Label" parent="UI/Margin/Panel/VBox/SlidersRow2/Param3Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Scale / Radius:"
+
+[node name="Param3Slider" type="HSlider" parent="UI/Margin/Panel/VBox/SlidersRow2/Param3Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 1.0
+max_value = 10.0
+step = 0.5
+value = 4.0
+
+[node name="Param4Row" type="HBoxContainer" parent="UI/Margin/Panel/VBox/SlidersRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Param4Label" type="Label" parent="UI/Margin/Panel/VBox/SlidersRow2/Param4Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Sharpness / Metal:"
+
+[node name="Param4Slider" type="HSlider" parent="UI/Margin/Panel/VBox/SlidersRow2/Param4Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.0
+max_value = 2.0
+step = 0.05
+value = 0.5

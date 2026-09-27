@@ -1,5 +1,5 @@
 # =============================================================================
-# CrShader Interactive Viewer Makefile
+# CrShader Live Sandbox Makefile
 # =============================================================================
 
 ifeq ($(OS),Windows_NT)
@@ -43,10 +43,9 @@ endif
 
 all: dirs deps bridge extension_list addons game_dll
 	@echo ===================================================================
-	@echo   CRShader Interactive Viewer built successfully!
+	@echo   CRShader Live Sandbox built successfully!
 	@echo   Run 'make run' to launch or 'make package' to create distributable.
 	@echo ===================================================================
-
 
 dirs:
 	@$(LAPIS) dirs
@@ -64,37 +63,35 @@ addons: dirs
 	@$(LAPIS) sync --addons-only
 
 build game_dll: dirs deps bridge extension_list addons
-	@echo [Viewer] Compiling game.$(SO_EXT) from $(ENTRY)...
+	@echo [Sandbox] Compiling game.$(SO_EXT) from $(ENTRY)...
 	@$(LAPIS) build -e $(ENTRY) -o $(GAME_LIB) -l '$(LINK_FLAGS)' $(if $(filter 1,$(RELEASE)),-r,) -s $(SOURCE_DIR)
 	@$(LAPIS) sync
 
 game_exe: dirs deps bridge extension_list addons game_dll
-	@echo [Viewer] Packaging complete playable game executable...
-	@$(LAPIS) package game -p . -n example-viewer $(if $(filter 1,$(RELEASE)),-r,)
+	@echo [Sandbox] Packaging complete playable game executable...
+	@$(LAPIS) package game -p . -n sandbox-$(PLATFORM) $(if $(filter 1,$(RELEASE)),-r,)
 
 package: game_dll
-	@echo [Viewer] Packaging Standalone Shader Viewer archive...
-	@$(LAPIS) package game -p . -n viewer-$(PLATFORM) $(if $(filter 1,$(RELEASE)),-r,) -t $(DIST_DIR) -f
-	@$(if $(filter Windows_NT,$(OS)),powershell -Command "Compress-Archive -Path $(DIST_DIR)/viewer-$(PLATFORM)/* -DestinationPath $(DIST_DIR)/viewer-$(PLATFORM).zip -Force",(cd $(DIST_DIR)/viewer-$(PLATFORM) && zip -r ../viewer-$(PLATFORM).zip ./*))
-
-
+	@echo [Sandbox] Packaging Standalone Shader Sandbox archive...
+	@$(LAPIS) package game -p . -n sandbox-$(PLATFORM) $(if $(filter 1,$(RELEASE)),-r,) -t $(DIST_DIR) -f
+	@$(if $(filter Windows_NT,$(OS)),powershell -Command "Compress-Archive -Path $(DIST_DIR)/sandbox-$(PLATFORM)/* -DestinationPath $(DIST_DIR)/sandbox-$(PLATFORM).zip -Force",(cd $(DIST_DIR)/sandbox-$(PLATFORM) && zip -r ../sandbox-$(PLATFORM).zip ./*))
 
 run: all
-	@echo [Viewer] Launching Shader Viewer with $(GODOT)...
+	@echo [Sandbox] Launching Shader Sandbox with $(GODOT)...
 	$(GODOT) --path .
 
 editor: all
-	@echo [Viewer] Opening Shader Viewer in Godot Editor...
+	@echo [Sandbox] Opening Shader Sandbox in Godot Editor...
 	$(GODOT) --editor --path .
 
 clean:
 	@$(if $(filter Windows_NT,$(OS)),powershell -Command "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue bin, dist, .godot",rm -rf $(BIN_DIR) $(DIST_DIR) .godot)
 
 help:
-	@echo CrShader Viewer Targets:
-	@echo   make all      - Build viewer game library and sync dependencies
+	@echo CrShader Sandbox Targets:
+	@echo   make all      - Build sandbox game library and sync dependencies
 	@echo   make build    - Compile Crystal game library
-	@echo   make package  - Create standalone example-viewer-$(PLATFORM).zip in dist/
-	@echo   make run      - Launch interactive viewer in Godot
+	@echo   make package  - Create standalone sandbox-$(PLATFORM).zip in dist/
+	@echo   make run      - Launch interactive sandbox in Godot
 	@echo   make editor   - Open project in Godot Editor
 	@echo   make clean    - Remove build artifacts

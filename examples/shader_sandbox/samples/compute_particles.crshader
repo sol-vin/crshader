@@ -1,0 +1,35 @@
+shader_type :compute
+
+local_size 64, 1, 1
+
+buffer ParticleBuffer, set: 0, binding: 0, std: :std430, restrict: true do
+  field positions : Array(Vec4)
+  field velocities : Array(Vec4)
+end
+
+push_constant Params do
+  field delta_time : Float32
+  field particle_count : UInt32
+  field gravity : Vec3
+end
+
+def main()
+  idx = gl_GlobalInvocationID.x
+  if idx >= params.particle_count
+    return
+  end
+
+  pos = particle_buffer.positions[idx].xyz
+  vel = particle_buffer.velocities[idx].xyz
+
+  vel = vel + params.gravity * params.delta_time
+  pos = pos + vel * params.delta_time
+
+  if pos.y < 0.0
+    pos.y = 0.0
+    vel.y = -vel.y * 0.7
+  end
+
+  particle_buffer.positions[idx] = vec4(pos, 1.0)
+  particle_buffer.velocities[idx] = vec4(vel, 0.0)
+end

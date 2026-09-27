@@ -1,0 +1,47 @@
+# =============================================================================
+# GDQuest: Stylized Energy Shield & Forcefield Shader
+# =============================================================================
+# Inspired by gdquest-demos/godot-shaders forcefield shield.
+# Features:
+# - Fresnel glancing-angle edge rim glow
+# - Animated harmonic pulse waves
+# - Hexagonal pattern grid overlay
+# - Scene geometry intersection edge glow via depth buffer
+
+shader_type :spatial
+render_mode :cull_disabled, :depth_draw_opaque
+
+uniform shield_color : Color = Color.new(0.2, 0.6, 1.0, 0.7), hint: :source_color
+uniform rim_color : Color = Color.new(0.6, 0.9, 1.0, 1.0), hint: :source_color
+uniform rim_power : Float32 = 3.0, hint: hint_range(0.5, 8.0)
+uniform pulse_speed : Float32 = 3.0, hint: hint_range(0.1, 10.0)
+uniform pulse_frequency : Float32 = 15.0
+uniform hex_scale : Float32 = 20.0
+uniform depth_texture : Sampler2D, hint: :hint_depth_texture
+
+def fragment
+  # 1. Fresnel Rim Glow
+  fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), rim_power)
+
+  # 2. Animated Pulse Ripples along UV
+  ripple = sin(UV.y * pulse_frequency - TIME * pulse_speed) * 0.5 + 0.5
+
+  # 3. Hexagonal Grid Pattern
+  grid_uv = UV * hex_scale
+  hex_coord = abs(fract(grid_uv) - 0.5)
+  hex_line = smoothstep(0.45, 0.50, max(hex_coord.x, hex_coord.y))
+
+  # 4. Scene Intersection Depth Fade
+  screen_depth = texture(depth_texture, SCREEN_UV).r
+  # Linearize depth difference in view space
+  depth_diff = abs(screen_depth - FRAGCOORD.z)
+  intersection_glow = smoothstep(0.02, 0.0, depth_diff)
+
+  # Combine elements
+  glow_factor = clamp(fresnel + (hex_line * 0.4) + (ripple * 0.3) + (intersection_glow * 0.8), 0.0, 1.0)
+  final_rgb = mix(shield_color.rgb, rim_color.rgb, glow_factor)
+
+  ALBEDO = final_rgb
+  EMISSION = final_rgb * (glow_factor * 2.0)
+  ALPHA = clamp(shield_color.a * (0.3 + glow_factor * 0.7), 0.0, 1.0)
+end

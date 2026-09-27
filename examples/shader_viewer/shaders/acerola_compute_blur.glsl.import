@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://nwoqynkl4die"
+path="res://.godot/imported/acerola_compute_blur.glsl-0d726523691b78c46804446796b45e48.res"
+
+[deps]
+
+source_file="res://shaders/acerola_compute_blur.glsl"
+dest_files=["res://.godot/imported/acerola_compute_blur.glsl-0d726523691b78c46804446796b45e48.res"]
+
+[params]
+

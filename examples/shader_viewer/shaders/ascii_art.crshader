@@ -1,0 +1,69 @@
+# ASCII Art Post-Processing
+# Based on Garrett Gunnell (Acerola) ASCII Shader
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
+uniform font_color : Color = Color.new(0.2, 1.0, 0.4, 1.0)
+uniform background_color : Color = Color.new(0.05, 0.05, 0.05, 1.0)
+uniform char_size : Vec2 = vec2(8.0, 12.0)
+uniform color_mode : Bool = false
+
+# Procedural glyph pattern generator for 10 character levels
+def char_pattern(idx : Int32, p : Vec2) : Float32
+  case idx
+  when 0
+    # Space ' '
+    0.0
+  when 1
+    # Dot '.'
+    ((p.x - 0.5).abs < 0.15 && (p.y - 0.8).abs < 0.15) ? 1.0 : 0.0
+  when 2
+    # Colon ':'
+    (((p.x - 0.5).abs < 0.15 && (p.y - 0.35).abs < 0.15) || ((p.x - 0.5).abs < 0.15 && (p.y - 0.75).abs < 0.15)) ? 1.0 : 0.0
+  when 3
+    # Minus '-'
+    ((p.y - 0.5).abs < 0.12 && p.x > 0.2 && p.x < 0.8) ? 1.0 : 0.0
+  when 4
+    # Plus '+'
+    (((p.y - 0.5).abs < 0.12 && p.x > 0.2 && p.x < 0.8) || ((p.x - 0.5).abs < 0.12 && p.y > 0.2 && p.y < 0.8)) ? 1.0 : 0.0
+  when 5
+    # Equals '='
+    (((p.y - 0.38).abs < 0.1 && p.x > 0.2 && p.x < 0.8) || ((p.y - 0.62).abs < 0.1 && p.x > 0.2 && p.x < 0.8)) ? 1.0 : 0.0
+  when 6
+    # Asterisk '*'
+    (((p.x - 0.5).abs < 0.12 && p.y > 0.2 && p.y < 0.8) || ((p.y - 0.5).abs < 0.12 && p.x > 0.2 && p.x < 0.8) || ((p.x - p.y).abs < 0.12 && p.x > 0.25 && p.x < 0.75)) ? 1.0 : 0.0
+  when 7
+    # Number sign '#'
+    (((p.x - 0.35).abs < 0.1 && p.y > 0.15 && p.y < 0.85) || ((p.x - 0.65).abs < 0.1 && p.y > 0.15 && p.y < 0.85) || ((p.y - 0.35).abs < 0.1 && p.x > 0.15 && p.x < 0.85) || ((p.y - 0.65).abs < 0.1 && p.x > 0.15 && p.x < 0.85)) ? 1.0 : 0.0
+  when 8
+    # Percent '%'
+    (((p.x - 0.3).abs < 0.15 && (p.y - 0.3).abs < 0.15) || ((p.x - 0.7).abs < 0.15 && (p.y - 0.7).abs < 0.15) || ((p.x + p.y - 1.0).abs < 0.12 && p.x > 0.2 && p.x < 0.8)) ? 1.0 : 0.0
+  else
+    # Full block '@' / solid
+    (p.x > 0.1 && p.x < 0.9 && p.y > 0.1 && p.y < 0.9) ? 1.0 : 0.0
+  end
+end
+
+def fragment
+  # Compute cell coordinates
+  pixel_coord = FRAGCOORD.xy
+  cell_idx = floor(pixel_coord / char_size)
+  cell_uv = (cell_idx * char_size + char_size * 0.5) * SCREEN_PIXEL_SIZE
+  local_uv = fract(pixel_coord / char_size)
+
+  # Sample scene color at center of character cell
+  scene_color = screen_texture.sample(cell_uv).rgb
+  luminance = dot(scene_color, vec3(0.299, 0.587, 0.114))
+
+  # Map luminance 0.0..1.0 to glyph index 0..9
+  glyph_index = clamp(int(luminance * 9.5), 0, 9)
+  glyph_mask = char_pattern(glyph_index, local_uv)
+
+  # Color output: monochrome terminal or scene tinted
+  text_col = color_mode ? scene_color : font_color.rgb
+  out_rgb = mix(background_color.rgb, text_col, glyph_mask)
+
+  COLOR = vec4(out_rgb, 1.0)
+end

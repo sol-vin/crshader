@@ -261,12 +261,14 @@ jobs:
         if: runner.os == 'Linux' && hashFiles('benchmarks/*.cr') != ''
         shell: bash
         run: |
+          crystal run benchmarks/compiler_bench.cr -- 50 || true
           crystal run benchmarks/example_bench.cr -- 5000 || true
 
       - name: Run Addon Benchmarks (Windows)
         if: runner.os == 'Windows' && hashFiles('benchmarks/*.cr') != ''
         shell: pwsh
         run: |
+          crystal run benchmarks/compiler_bench.cr -- 50 | Out-Default
           crystal run benchmarks/example_bench.cr -- 5000 | Out-Default
 
       - name: Publish CI Step Summary

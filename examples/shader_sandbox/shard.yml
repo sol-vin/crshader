@@ -1,0 +1,15 @@
+name: shader_sandbox
+version: 0.1.0
+authors:
+  - Developer <developer@example.com>
+license: MIT
+
+dependencies:
+  lapis:
+    path: ../../../
+  crshader:
+    path: ../../
+
+targets:
+  shader_sandbox:
+    main: src/main.cr

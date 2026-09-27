@@ -1,10 +1,10 @@
 # CRShader
 
 [![Crystal](https://img.shields.io/badge/Crystal-1.20+-black.svg?style=flat&logo=crystal)](https://crystal-lang.org)
-[![CRShader](https://img.shields.io/badge/CRShader-0.1.0-blueviolet.svg?style=flat)](https://github.com/sol-vin/lapis/releases)
+[![CRShader](https://img.shields.io/badge/CRShader-0.1.5-blueviolet.svg?style=flat)](https://github.com/sol-vin/crshader/releases)
 [![Godot](https://img.shields.io/badge/Godot-4.8+-blue.svg?style=flat&logo=godotengine)](https://godotengine.org)
-[![Docs](https://img.shields.io/badge/Docs-CRShader%20Language-blueviolet.svg?style=flat)](docs/index.html)
-[![Benchmarks](https://img.shields.io/badge/Compiler-~1.1ms%20%7C%20100k%20LOC%2Fs-success.svg?style=flat)](benchmarks/)
+[![Docs](https://img.shields.io/badge/Docs-CRShader%20Language-blueviolet.svg?style=flat)](https://sol-vin.github.io/crshader/)
+[![Benchmarks](https://img.shields.io/badge/Benchmarks-Interactive%20Report-success.svg?style=flat)](https://sol-vin.github.io/crshader/benchmarks.html)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **CRShader** is a high-performance shader trans-compiler and live runtime development toolchain for **Godot Engine 4.8+**, powered by Crystal and [Lapis](https://github.com/sol-vin/lapis). It introduces a declarative, type-safe Crystal shader DSL that transpiles down to optimized Godot GDShader (4.x) and GLSL compute kernels with native machine speed (~1.1ms transpilation, >100,000 LOC/s).
@@ -97,6 +97,8 @@ Run benchmarks locally:
 crystal run benchmarks/compiler_bench.cr
 ```
 
+View the latest automated [Interactive Benchmark Report](https://sol-vin.github.io/crshader/benchmarks.html) deployed live on GitHub Pages.
+
 ---
 
 ## DSL Comparison
@@ -111,34 +113,30 @@ crystal run benchmarks/compiler_bench.cr
   <tbody>
     <tr>
       <td>
-<pre lang="crystal">
-shader_type :canvas_item
+<pre lang="crystal">shader_type :canvas_item
 render_mode :unshaded
-
+# Uniform parameters
 uniform tint : vec4 = vec4(0.2, 0.6, 1.0, 1.0)
 uniform speed : float = 1.5
-
+# Fragment stage
 stage :fragment do
   uv = UV + vec2(TIME * speed * 0.1, 0.0)
   col = texture(TEXTURE, uv) * tint
   COLOR = col
-end
-</pre>
+end</pre>
       </td>
       <td>
-<pre lang="glsl">
-shader_type canvas_item;
+<pre lang="glsl">shader_type canvas_item;
 render_mode unshaded;
-
+// Uniform parameters
 uniform vec4 tint = vec4(0.2, 0.6, 1.0, 1.0);
 uniform float speed = 1.5;
-
+// Fragment stage
 void fragment() {
     vec2 uv = UV + vec2(TIME * speed * 0.1, 0.0);
     vec4 col = texture(TEXTURE, uv) * tint;
     COLOR = col;
-}
-</pre>
+}</pre>
       </td>
     </tr>
   </tbody>
@@ -155,7 +153,7 @@ Add `crshader` as a dependency in your `shard.yml`:
 ```yaml
 dependencies:
   crshader:
-    github: sol-vin/lapis
+    github: sol-vin/crshader
     branch: master
 ```
 
@@ -212,15 +210,30 @@ crystal build src/cli.cr -o bin/crshader
 
 ---
 
-## Standalone Shader Viewer
+## Standalone Shader Applications
 
-CRShader provides an interactive standalone viewer showcasing 20+ procedural shaders (animated water, CRT scanlines, Kuwahara filter, PSX retro, fire particles, tonemapping):
+### 1. Interactive Shader Viewer
+CRShader provides an interactive standalone viewer showcasing 20+ procedural shaders (animated water, CRT scanlines, Kuwahara filter, PSX retro, fire particles, tonemapping, compute kernels) across multiple 3D polygon meshes (Cube, Sphere, Cylinder, Torus, Prism, Plane), screen-space quad post-processing, camera compositor passes, and dynamic uniform tweaking:
 
 ```bash
 make viewer
 ```
 
-Packaged standalone viewer executables are available on the [Releases](https://github.com/sol-vin/lapis/releases) page under `example-viewer-windows.zip` (and `example-viewer-linux.zip`).
+Packaged standalone viewer executables are available on the [Releases](https://github.com/sol-vin/crshader/releases) page under `viewer-windows.zip` and `viewer-linux.zip`.
+
+### 2. Live Shader Sandbox
+CRShader includes a split-screen live coding environment allowing side-by-side editing in Crystal DSL with real-time viewport preview:
+- Rich syntax highlighting for keywords, built-ins, and types.
+- Reference sample gallery: open, edit, and experiment with any of our 20+ bundled `.crshader` shaders.
+- 2D, 3D (with mesh selection), screen-space quad, and compute modes.
+- Background pattern/color switcher and texture input slots (`uniform sampler2D`).
+- Real-time uniform parameter tweaking.
+
+```bash
+make sandbox
+```
+
+Packaged standalone sandbox executables are available on the [Releases](https://github.com/sol-vin/crshader/releases) page under `sandbox-windows.zip` and `sandbox-linux.zip`.
 
 ---
 
@@ -261,9 +274,29 @@ Packaged standalone viewer executables are available on the [Releases](https://g
       <td>Package redistributable addon zip into <code>dist/crshader.zip</code>.</td>
     </tr>
     <tr>
+      <td><strong>Launch Viewer</strong></td>
+      <td><code>make viewer</code></td>
+      <td>Launch the interactive 20+ shader showcase viewer.</td>
+    </tr>
+    <tr>
       <td><strong>Package Viewer</strong></td>
       <td><code>make package-viewer</code></td>
-      <td>Package standalone viewer application into <code>dist/example-viewer-windows.zip</code>.</td>
+      <td>Package standalone viewer application into <code>dist/viewer-windows.zip</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Launch Sandbox</strong></td>
+      <td><code>make sandbox</code></td>
+      <td>Launch the split-screen live shader sandbox.</td>
+    </tr>
+    <tr>
+      <td><strong>Package Sandbox</strong></td>
+      <td><code>make package-sandbox</code></td>
+      <td>Package standalone sandbox application into <code>dist/sandbox-windows.zip</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Package All Targets</strong></td>
+      <td><code>make package-targets</code></td>
+      <td>Discover targets from <code>shard.yml</code> and package all release archives.</td>
     </tr>
   </tbody>
 </table>

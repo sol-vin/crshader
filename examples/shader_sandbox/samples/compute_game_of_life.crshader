@@ -1,0 +1,56 @@
+# =============================================================================
+# Compute: Conway's Game of Life Cellular Automaton
+# =============================================================================
+# Inspired by Garrett Gunnell's Compute-Game-Of-Life for Godot.
+# Evaluates cell neighborhood states and advances one simulation step.
+
+shader_type :compute
+local_size 8, 8, 1
+
+image2d state_in, format: :rgba32f, set: 0, binding: 0
+image2d state_out, format: :rgba32f, set: 0, binding: 1
+
+def main
+  coord = ivec2(gl_GlobalInvocationID.xy)
+  size = imageSize(state_in)
+
+  if coord.x >= size.x || coord.y >= size.y
+    return
+  end
+
+  # Count living neighbors across 3x3 surrounding cells
+  live_neighbors = 0
+
+  (-1..1).each do |dx|
+    (-1..1).each do |dy|
+      if dx != 0 || dy != 0
+        neighbor_coord = (coord + ivec2(dx, dy) + size) % size
+        cell = imageLoad(state_in, neighbor_coord)
+        if cell.r > 0.5
+          live_neighbors += 1
+        end
+      end
+    end
+  end
+
+  current_cell = imageLoad(state_in, coord)
+  currently_alive = current_cell.r > 0.5
+  next_alive = false
+
+  # Conway's standard rules:
+  # 1. Any live cell with 2 or 3 live neighbors survives.
+  # 2. Any dead cell with exactly 3 live neighbors becomes a live cell.
+  # 3. All other live cells die in the next generation.
+  if currently_alive
+    if live_neighbors == 2 || live_neighbors == 3
+      next_alive = true
+    end
+  else
+    if live_neighbors == 3
+      next_alive = true
+    end
+  end
+
+  out_col = next_alive ? vec4(1.0, 1.0, 1.0, 1.0) : vec4(0.0, 0.0, 0.0, 1.0)
+  imageStore(state_out, coord, out_col)
+end

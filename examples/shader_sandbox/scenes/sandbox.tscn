@@ -1,0 +1,368 @@
+[gd_scene format=3 uid="uid://s4ndb0xsh4d3r"]
+
+[ext_resource type="Shader" path="res://samples/basic_spatial.gdshader" id="1_default_shader"]
+[ext_resource type="Texture2D" path="res://icon.svg" id="2_icon"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_preview"]
+render_priority = 0
+shader = ExtResource("1_default_shader")
+shader_parameter/albedo = Color(0.2, 0.6, 0.95, 1)
+shader_parameter/roughness = 0.3
+shader_parameter/metallic = 0.2
+shader_parameter/wave_speed = 2.0
+shader_parameter/wave_height = 0.15
+
+[sub_resource type="SphereMesh" id="SphereMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+radius = 1.0
+height = 2.0
+radial_segments = 64
+rings = 32
+
+[sub_resource type="BoxMesh" id="BoxMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+size = Vector3(1.8, 1.8, 1.8)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+top_radius = 0.9
+bottom_radius = 0.9
+height = 2.0
+radial_segments = 48
+
+[sub_resource type="TorusMesh" id="TorusMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+inner_radius = 1.1
+outer_radius = 1.6
+rings = 48
+ring_segments = 24
+
+[sub_resource type="PrismMesh" id="PrismMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+size = Vector3(2.0, 2.0, 1.5)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+radius = 0.8
+height = 2.2
+radial_segments = 48
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_preview"]
+material = SubResource("ShaderMaterial_preview")
+size = Vector2(2.5, 2.5)
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sandbox"]
+sky_top_color = Color(0.12, 0.18, 0.32, 1)
+sky_horizon_color = Color(0.45, 0.55, 0.7, 1)
+
+[sub_resource type="Sky" id="Sky_sandbox"]
+sky_material = SubResource("ProceduralSkyMaterial_sandbox")
+
+[sub_resource type="Environment" id="Environment_sandbox"]
+background_mode = 2
+sky = SubResource("Sky_sandbox")
+ambient_light_source = 3
+ambient_light_color = Color(0.7, 0.8, 0.95, 1)
+
+[node name="Sandbox" type="CrShaderSandboxApp"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Split" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+split_offset = 680
+
+[node name="LeftPane" type="MarginContainer" parent="Split"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="Split/LeftPane"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Toolbar1" type="HBoxContainer" parent="Split/LeftPane/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Split/LeftPane/VBox/Toolbar1"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.88, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "🧪 CRShader Studio & Sandbox"
+
+[node name="ModeOption" type="OptionButton" parent="Split/LeftPane/VBox/Toolbar1"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TemplateOption" type="OptionButton" parent="Split/LeftPane/VBox/Toolbar1"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Toolbar2" type="HBoxContainer" parent="Split/LeftPane/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SampleLabel" type="Label" parent="Split/LeftPane/VBox/Toolbar2"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Reference Sample:"
+
+[node name="SampleOption" type="OptionButton" parent="Split/LeftPane/VBox/Toolbar2"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ResetBtn" type="Button" parent="Split/LeftPane/VBox/Toolbar2"]
+layout_mode = 2
+tooltip_text = "Reset current editor text to pristine original sample"
+text = "↺ Reset"
+
+[node name="CompileBtn" type="Button" parent="Split/LeftPane/VBox/Toolbar2"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 1, 0.6, 1)
+text = "▶ Compile"
+
+[node name="StatusLabel" type="Label" parent="Split/LeftPane/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.9, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "✔ Compiler Ready"
+
+[node name="EditorTabs" type="TabContainer" parent="Split/LeftPane/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="SourceCRShader" type="CodeEdit" parent="Split/LeftPane/VBox/EditorTabs"]
+layout_mode = 2
+gutters_draw_line_numbers = true
+auto_brace_completion_enabled = true
+indent_size = 2
+line_wrapping_mode = 1
+
+[node name="CompiledTarget" type="CodeEdit" parent="Split/LeftPane/VBox/EditorTabs"]
+visible = false
+layout_mode = 2
+editable = false
+gutters_draw_line_numbers = true
+line_wrapping_mode = 1
+
+[node name="RightPane" type="MarginContainer" parent="Split"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="Split/RightPane"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ViewportToolbar" type="HBoxContainer" parent="Split/RightPane/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ShapeLabel" type="Label" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Shape:"
+
+[node name="ShapeOption" type="OptionButton" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+
+[node name="BgLabel" type="Label" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Background:"
+
+[node name="BgOption" type="OptionButton" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+
+[node name="TexLabel" type="Label" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Texture:"
+
+[node name="TexOption" type="OptionButton" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+
+[node name="AutoRotateCheck" type="CheckBox" parent="Split/RightPane/VBox/ViewportToolbar"]
+layout_mode = 2
+button_pressed = true
+text = "Auto Rotate"
+
+[node name="ViewportContainer" type="SubViewportContainer" parent="Split/RightPane/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="Split/RightPane/VBox/ViewportContainer"]
+handle_input_locally = false
+size = Vector2i(700, 520)
+render_target_update_mode = 4
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Split/RightPane/VBox/ViewportContainer/SubViewport"]
+environment = SubResource("Environment_sandbox")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport"]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 6, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 0.6, 3.4)
+current = true
+
+[node name="Pivot3D" type="Node3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport"]
+
+[node name="SphereMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+mesh = SubResource("SphereMesh_preview")
+
+[node name="CubeMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+visible = false
+mesh = SubResource("BoxMesh_preview")
+
+[node name="CylinderMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+visible = false
+mesh = SubResource("CylinderMesh_preview")
+
+[node name="TorusMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+visible = false
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 0, 0)
+mesh = SubResource("TorusMesh_preview")
+
+[node name="PrismMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+visible = false
+mesh = SubResource("PrismMesh_preview")
+
+[node name="CapsuleMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+visible = false
+mesh = SubResource("CapsuleMesh_preview")
+
+[node name="PlaneMesh" type="MeshInstance3D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport/Pivot3D"]
+visible = false
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 0, 0)
+mesh = SubResource("PlaneMesh_preview")
+
+[node name="ScreenSpaceQuad" type="ColorRect" parent="Split/RightPane/VBox/ViewportContainer/SubViewport"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Sprite2D" type="Sprite2D" parent="Split/RightPane/VBox/ViewportContainer/SubViewport"]
+visible = false
+position = Vector2(350, 260)
+scale = Vector2(2.5, 2.5)
+texture = ExtResource("2_icon")
+
+[node name="InspectorPanel" type="PanelContainer" parent="Split/RightPane/VBox"]
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Split/RightPane/VBox/InspectorPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="HeaderLabel" type="Label" parent="Split/RightPane/VBox/InspectorPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 13
+text = "⚙️ Shader Parameters & Uniforms"
+
+[node name="SlidersRow1" type="HBoxContainer" parent="Split/RightPane/VBox/InspectorPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="P1Row" type="HBoxContainer" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="P1Label" type="Label" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P1Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Speed:"
+
+[node name="P1Slider" type="HSlider" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P1Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.1
+max_value = 5.0
+step = 0.1
+value = 1.0
+
+[node name="P2Row" type="HBoxContainer" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="P2Label" type="Label" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P2Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Intensity:"
+
+[node name="P2Slider" type="HSlider" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P2Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.0
+max_value = 3.0
+step = 0.05
+value = 1.0
+
+[node name="SlidersRow2" type="HBoxContainer" parent="Split/RightPane/VBox/InspectorPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="P3Row" type="HBoxContainer" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="P3Label" type="Label" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P3Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Scale/Radius:"
+
+[node name="P3Slider" type="HSlider" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P3Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 1.0
+max_value = 10.0
+step = 0.5
+value = 4.0
+
+[node name="P4Row" type="HBoxContainer" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="P4Label" type="Label" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P4Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Roughness:"
+
+[node name="P4Slider" type="HSlider" parent="Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P4Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.0
+max_value = 1.0
+step = 0.05
+value = 0.3

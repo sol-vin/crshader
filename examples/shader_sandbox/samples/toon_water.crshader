@@ -1,0 +1,34 @@
+shader_type :spatial
+render_mode :cull_disabled
+
+require "math"
+require "noise"
+
+uniform deep_color : Color = Color.new(0.05, 0.25, 0.45, 1.0), hint: :source_color
+uniform shallow_color : Color = Color.new(0.2, 0.7, 0.8, 1.0), hint: :source_color
+uniform foam_color : Color = Color.new(0.9, 0.95, 1.0, 1.0), hint: :source_color
+uniform speed : Float32 = 1.0
+
+varying v_world_pos : Vec3
+
+macro sample_waves(octaves)
+  {% for i in 0...octaves %}
+    n_val += value_noise(p * {{i + 1}}.0 + TIME * 0.2 * speed) * (1.0 / {{i + 1}}.0)
+  {% end %}
+end
+
+def vertex()
+  v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz
+  p = v_world_pos.xz * 0.5
+  n_val = 0.0
+  sample_waves(3)
+  VERTEX.y = VERTEX.y + n_val * 0.2
+end
+
+def fragment()
+  f = fresnel(3.0, NORMAL, VIEW)
+  water_col = mix(deep_color.rgb, shallow_color.rgb, f)
+  ALBEDO = water_col
+  ROUGHNESS = 0.1
+  METALLIC = 0.0
+end

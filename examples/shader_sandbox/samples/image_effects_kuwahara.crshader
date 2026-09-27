@@ -1,0 +1,105 @@
+# =============================================================================
+# Image-Effects: Painterly Kuwahara Filter
+# =============================================================================
+# Inspired by Garrett Gunnell's Image-Effects repository.
+# Evaluates 4 quadrant sectors surrounding each pixel, computes their
+# mean color and standard deviation variance, and outputs the color of the
+# quadrant with the minimum variance, creating an oil-painted look.
+
+shader_type :canvas_item
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, filter: :linear
+uniform radius : Int32 = 3, hint: hint_range(1, 6)
+
+def fragment
+  uv = UV
+  tex_size = textureSize(screen_texture, 0)
+  step_size = vec2(1.0) / vec2(float(tex_size.x), float(tex_size.y))
+
+  m0 = vec3(0.0)
+  m1 = vec3(0.0)
+  m2 = vec3(0.0)
+  m3 = vec3(0.0)
+
+  s0 = vec3(0.0)
+  s1 = vec3(0.0)
+  s2 = vec3(0.0)
+  s3 = vec3(0.0)
+
+  n = float((radius + 1) * (radius + 1))
+
+  # Quadrant 0: Top-Left (-radius..0, -radius..0)
+  (-radius..0).each do |j|
+    (-radius..0).each do |i|
+      col = texture(screen_texture, uv + vec2(float(i), float(j)) * step_size).rgb
+      m0 += col
+      s0 += col * col
+    end
+  end
+
+  # Quadrant 1: Top-Right (0..radius, -radius..0)
+  (-radius..0).each do |j|
+    (0..radius).each do |i|
+      col = texture(screen_texture, uv + vec2(float(i), float(j)) * step_size).rgb
+      m1 += col
+      s1 += col * col
+    end
+  end
+
+  # Quadrant 2: Bottom-Left (-radius..0, 0..radius)
+  (0..radius).each do |j|
+    (-radius..0).each do |i|
+      col = texture(screen_texture, uv + vec2(float(i), float(j)) * step_size).rgb
+      m2 += col
+      s2 += col * col
+    end
+  end
+
+  # Quadrant 3: Bottom-Right (0..radius, 0..radius)
+  (0..radius).each do |j|
+    (0..radius).each do |i|
+      col = texture(screen_texture, uv + vec2(float(i), float(j)) * step_size).rgb
+      m3 += col
+      s3 += col * col
+    end
+  end
+
+  # Calculate means
+  m0 = m0 / n
+  m1 = m1 / n
+  m2 = m2 / n
+  m3 = m3 / n
+
+  # Calculate variance for each quadrant: s = (sum_sq / n) - (mean * mean)
+  v0 = abs(s0 / n - m0 * m0)
+  v1 = abs(s1 / n - m1 * m1)
+  v2 = abs(s2 / n - m2 * m2)
+  v3 = abs(s3 / n - m3 * m3)
+
+  val0 = v0.r + v0.g + v0.b
+  val1 = v1.r + v1.g + v1.b
+  val2 = v2.r + v2.g + v2.b
+  val3 = v3.r + v3.g + v3.b
+
+  # Pick quadrant with minimum variance
+  min_val = val0
+  result = m0
+
+  if val1 < min_val
+    min_val = val1
+    result = m1
+  end
+
+  if val2 < min_val
+    min_val = val2
+    result = m2
+  end
+
+  if val3 < min_val
+    min_val = val3
+    result = m3
+  end
+
+  COLOR = vec4(result, 1.0)
+end

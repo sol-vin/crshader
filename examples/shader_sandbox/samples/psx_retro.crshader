@@ -1,0 +1,48 @@
+# =============================================================================
+# Godot-PSX: Retro PlayStation 1 Aesthetic Shader
+# =============================================================================
+# Inspired by Garrett Gunnell's Godot-PSX repository.
+# Features:
+# - Low-resolution vertex position snapping / jitter
+# - Affine texture mapping emulation
+# - Color quantization (15-bit / 16-bit color reduction)
+
+shader_type :spatial
+render_mode :cull_disabled
+
+uniform albedo_texture : Sampler2D, filter: :nearest
+uniform jitter_resolution : Vec2 = vec2(320.0, 240.0)
+uniform color_depth : Float32 = 32.0, hint: hint_range(4.0, 64.0)
+uniform affine_mapping : Bool = true
+
+varying v_affine_uv : Vec2
+varying v_clip_w : Float32
+
+def vertex
+  clip_pos = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0)
+
+  # Snap vertex positions in normalized screen coordinates to simulated pixel grid
+  ndc = clip_pos.xy / clip_pos.w
+  snapped_ndc = floor(ndc * jitter_resolution) / jitter_resolution
+  clip_pos.xy = snapped_ndc * clip_pos.w
+
+  POSITION = clip_pos
+  v_clip_w = clip_pos.w
+
+  if affine_mapping
+    v_affine_uv = UV * clip_pos.w
+  else
+    v_affine_uv = UV
+  end
+end
+
+def fragment
+  uv = affine_mapping ? (v_affine_uv / v_clip_w) : UV
+  tex_color = texture(albedo_texture, uv)
+
+  # Quantize color to emulate low bit-depth DAC hardware
+  quantized_rgb = floor(tex_color.rgb * color_depth) / color_depth
+
+  ALBEDO = quantized_rgb
+  ALPHA = tex_color.a
+end

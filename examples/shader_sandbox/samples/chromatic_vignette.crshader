@@ -1,0 +1,37 @@
+# Chromatic Aberration, Barrel Distortion & Vignette
+# Based on Garrett Gunnell (Acerola) Lens & Camera Post-Processing
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
+uniform chromatic_aberration : Float32 = 0.008, hint: hint_range(0.0, 0.05)
+uniform barrel_distortion : Float32 = 0.12, hint: hint_range(-0.5, 0.5)
+uniform vignette_radius : Float32 = 0.75, hint: hint_range(0.1, 1.5)
+uniform vignette_softness : Float32 = 0.45, hint: hint_range(0.01, 1.0)
+
+def fragment
+  uv = SCREEN_UV
+  centered = uv - vec2(0.5, 0.5)
+  dist_sq = dot(centered, centered)
+  dist = sqrt(dist_sq)
+
+  # Barrel lens distortion
+  distorted_uv = uv + centered * (dist_sq * barrel_distortion)
+
+  # Radial chromatic aberration offset direction
+  dir = normalize(centered)
+  offset = dir * (dist * chromatic_aberration)
+
+  # Sample red, green, blue color channels at offset UVs
+  r = screen_texture.sample(distorted_uv - offset).r
+  g = screen_texture.sample(distorted_uv).g
+  b = screen_texture.sample(distorted_uv + offset).b
+  col = vec3(r, g, b)
+
+  # Smooth vignette darkening at borders
+  vig = smoothstep(vignette_radius, vignette_radius - vignette_softness, dist)
+  col = col * vig
+
+  COLOR = vec4(col, 1.0)
+end

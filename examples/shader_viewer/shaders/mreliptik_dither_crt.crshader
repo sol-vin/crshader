@@ -1,0 +1,59 @@
+# =============================================================================
+# MrEliptik: Stylized CRT Monitor & Bayer Dither Shader
+# =============================================================================
+# Inspired by MrEliptik/shader_experiments retro display shaders.
+# Combines:
+# - Cathode Ray Tube (CRT) barrel curvature distortion
+# - Horizontal phosphor scanlines with flicker
+# - 4x4 Ordered Bayer Matrix dithering
+
+shader_type :canvas_item
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, filter: :nearest
+uniform curvature : Float32 = 0.05, hint: hint_range(0.0, 0.2)
+uniform scanline_count : Float32 = 240.0
+uniform scanline_strength : Float32 = 0.25, hint: hint_range(0.0, 1.0)
+uniform dither_strength : Float32 = 0.08, hint: hint_range(0.0, 0.5)
+
+# 4x4 Bayer Matrix for ordered dithering
+const bayer_matrix = [
+   0.0 / 16.0,  8.0 / 16.0,  2.0 / 16.0, 10.0 / 16.0,
+  12.0 / 16.0,  4.0 / 16.0, 14.0 / 16.0,  6.0 / 16.0,
+   3.0 / 16.0, 11.0 / 16.0,  1.0 / 16.0,  9.0 / 16.0,
+  15.0 / 16.0,  7.0 / 16.0, 13.0 / 16.0,  5.0 / 16.0
+]
+
+def curve_uv(uv : Vec2, k : Float32) : Vec2
+  centered = uv - vec2(0.5, 0.5)
+  r2 = dot(centered, centered)
+  curved = centered * (1.0 + k * r2)
+  curved + vec2(0.5, 0.5)
+end
+
+def fragment
+  # 1. Apply CRT barrel curvature
+  uv = curve_uv(UV, curvature)
+
+  # Check if UV is outside curved CRT screen bounds
+  if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0
+    COLOR = vec4(0.0, 0.0, 0.0, 1.0)
+  else
+    color = texture(screen_texture, uv).rgb
+
+    # 2. Phosphor Scanlines
+    scanline = sin(uv.y * scanline_count * 3.14159) * 0.5 + 0.5
+    color = color * (1.0 - (scanline * scanline_strength))
+
+    # 3. 4x4 Bayer Matrix Dithering
+    px = int(FRAGCOORD.x) % 4
+    py = int(FRAGCOORD.y) % 4
+    bayer_idx = py * 4 + px
+    dither_threshold = bayer_matrix[bayer_idx] - 0.5
+
+    color = color + vec3(dither_threshold * dither_strength)
+    color = clamp(color, 0.0, 1.0)
+
+    COLOR = vec4(color, 1.0)
+  end
+end

@@ -1,0 +1,57 @@
+# Color Blindness Simulation (Machado et al. Algorithm)
+# Based on Garrett Gunnell (Acerola) Accessibility Post-Processing
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
+# 0 = Normal, 1 = Protanopia (Red-Blind), 2 = Deuteranopia (Green-Blind), 3 = Tritanopia (Blue-Blind), 4 = Achromatopsia (Monochrome)
+uniform mode : Int32 = 1, hint: hint_range(0, 4)
+uniform severity : Float32 = 1.0, hint: hint_range(0.0, 1.0)
+
+# Machado 2009 LMS Simulation Matrices (100% severity)
+PROTANOPIA_MAT = mat3(
+  vec3(0.56667, 0.43333, 0.0),
+  vec3(0.55833, 0.44167, 0.0),
+  vec3(0.0,     0.24167, 0.75833)
+)
+
+DEUTERANOPIA_MAT = mat3(
+  vec3(0.625, 0.375, 0.0),
+  vec3(0.70,  0.30,  0.0),
+  vec3(0.0,   0.30,  0.70)
+)
+
+TRITANOPIA_MAT = mat3(
+  vec3(0.95, 0.05,  0.0),
+  vec3(0.0,  0.433, 0.567),
+  vec3(0.0,  0.475, 0.525)
+)
+
+def fragment
+  uv = SCREEN_UV
+  orig_col = screen_texture.sample(uv).rgb
+
+  sim_col = orig_col
+
+  case mode
+  when 1
+    # Protanopia (Red-weak / Red-blind)
+    sim_col = PROTANOPIA_MAT * orig_col
+  when 2
+    # Deuteranopia (Green-weak / Green-blind)
+    sim_col = DEUTERANOPIA_MAT * orig_col
+  when 3
+    # Tritanopia (Blue-weak / Blue-blind)
+    sim_col = TRITANOPIA_MAT * orig_col
+  when 4
+    # Achromatopsia (Total color blindness / rods only)
+    gray = dot(orig_col, vec3(0.299, 0.587, 0.114))
+    sim_col = vec3(gray, gray, gray)
+  else
+    sim_col = orig_col
+  end
+
+  final_col = mix(orig_col, sim_col, severity)
+  COLOR = vec4(final_col, 1.0)
+end

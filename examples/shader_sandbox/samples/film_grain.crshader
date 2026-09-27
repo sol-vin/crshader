@@ -1,0 +1,47 @@
+# Film Grain & Analog Noise Post-Processing
+# Based on Garrett Gunnell (Acerola) Noise & Grain Shaders
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
+uniform grain_amount : Float32 = 0.06, hint: hint_range(0.0, 0.3)
+uniform grain_speed : Float32 = 12.0, hint: hint_range(1.0, 30.0)
+uniform grain_size : Float32 = 1.5, hint: hint_range(1.0, 5.0)
+uniform colored_noise : Bool = false
+
+def hash21(p : Vec2) : Float32
+  p3 = fract(vec3(p.x, p.y, p.x) * 0.1031)
+  p3 = p3 + dot(p3, p3.yzx + 33.33)
+  fract((p3.x + p3.y) * p3.z)
+end
+
+def fragment
+  uv = SCREEN_UV
+  scene_color = screen_texture.sample(uv).rgb
+
+  # Animated noise seed
+  t = floor(TIME * grain_speed)
+  grain_uv = (FRAGCOORD.xy / grain_size) + vec2(t * 17.13, t * 43.71)
+
+  # Generate procedural hash grain
+  n_r = hash21(grain_uv) - 0.5
+
+  if colored_noise
+    n_g = hash21(grain_uv + vec2(13.5, 47.2)) - 0.5
+    n_b = hash21(grain_uv + vec2(71.9, 93.1)) - 0.5
+    noise_vec = vec3(n_r, n_g, n_b)
+  else
+    noise_vec = vec3(n_r, n_r, n_r)
+  end
+
+  # Composite grain: luminance-based response (stronger in midtones, subtle in darks/brights)
+  lum = dot(scene_color, vec3(0.299, 0.587, 0.114))
+  response = 1.0 - (lum - 0.5).abs * 1.5
+  response = clamp(response, 0.2, 1.0)
+
+  final_color = scene_color + noise_vec * (grain_amount * response)
+  final_color = clamp(final_color, 0.0, 1.0)
+
+  COLOR = vec4(final_color, 1.0)
+end

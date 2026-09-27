@@ -40,7 +40,7 @@ ifeq ($(strip $(RELEASE)),1)
 	CRYSTAL_FLAGS += --release
 endif
 
-.PHONY: all build deps bridge extension_list addons project_bindings project-bindings bindings package package_addon package-addon export export_release export-release rebuild run editor run_editor run-editor test spec docs setup_dev setup-dev clean help
+.PHONY: all build deps bridge extension_list addons project_bindings project-bindings bindings package package_addon package-addon export export_release export-release rebuild run editor run_editor run-editor viewer build_viewer build-viewer package_viewer package-viewer sandbox build_sandbox build-sandbox package_sandbox package-sandbox package_all package-all test spec docs setup_dev setup-dev clean help
 
 all: dirs deps bridge extension_list addons project_bindings build
 	@echo ===================================================================
@@ -124,14 +124,32 @@ build_viewer build-viewer: all
 	@$(MAKE) -C examples/shader_viewer build
 
 package_viewer package-viewer: all
-	@echo [CRShader] Packaging Standalone Shader Viewer archive (example-viewer-$(PLATFORM).zip)...
+	@echo [CRShader] Packaging Standalone Shader Viewer archive (viewer-$(PLATFORM).zip)...
 	@$(MAKE) -C examples/shader_viewer package RELEASE=1
-	@$(if $(filter Windows_NT,$(OS)),cmd /c "if exist examples\shader_viewer\dist\*.zip copy /Y examples\shader_viewer\dist\*.zip dist\ >nul 2>&1",cp -f examples/shader_viewer/dist/*.zip dist/ 2>/dev/null || true)
-	@echo [CRShader] Standalone Shader Viewer ready at dist/example-viewer-$(PLATFORM).zip
+	@$(if $(filter Windows_NT,$(OS)),cmd /c "if exist examples\shader_viewer\dist\viewer-*.zip copy /Y examples\shader_viewer\dist\viewer-*.zip dist\ >nul 2>&1",cp -f examples/shader_viewer/dist/viewer-*.zip dist/ 2>/dev/null || true)
+	@echo [CRShader] Standalone Shader Viewer ready at dist/viewer-$(PLATFORM).zip
+
+sandbox: all
+	@echo [CRShader] Launching interactive Shader Sandbox...
+	@$(MAKE) -C examples/shader_sandbox run
+
+build_sandbox build-sandbox: all
+	@echo [CRShader] Building Shader Sandbox target...
+	@$(MAKE) -C examples/shader_sandbox build
+
+package_sandbox package-sandbox: all
+	@echo [CRShader] Packaging Standalone Shader Sandbox archive (sandbox-$(PLATFORM).zip)...
+	@$(MAKE) -C examples/shader_sandbox package RELEASE=1
+	@$(if $(filter Windows_NT,$(OS)),cmd /c "if exist examples\shader_sandbox\dist\sandbox-*.zip copy /Y examples\shader_sandbox\dist\sandbox-*.zip dist\ >nul 2>&1",cp -f examples/shader_sandbox/dist/sandbox-*.zip dist/ 2>/dev/null || true)
+	@echo [CRShader] Standalone Shader Sandbox ready at dist/sandbox-$(PLATFORM).zip
+
+package_all package-all: package package-viewer package-sandbox
+	@echo [CRShader] All release artifacts packaged in dist/
 
 clean:
 	@$(LAPIS) clean
 	@$(MAKE) -C examples/shader_viewer clean 2>/dev/null || true
+	@$(MAKE) -C examples/shader_sandbox clean 2>/dev/null || true
 
 test spec:
 	@echo [Addon] Running Crystal specifications...
@@ -151,7 +169,11 @@ help:
 	@echo   make export-release Build optimized release zip in dist/
 	@echo   make viewer         Launch interactive Shader Viewer showcase
 	@echo   make build-viewer   Compile Shader Viewer target example
-	@echo   make package-viewer Package standalone example-viewer-$(PLATFORM).zip
+	@echo   make package-viewer Package standalone viewer-$(PLATFORM).zip
+	@echo   make sandbox        Launch interactive Shader Sandbox
+	@echo   make build-sandbox  Compile Shader Sandbox target example
+	@echo   make package-sandbox Package standalone sandbox-$(PLATFORM).zip
+	@echo   make package-all    Package all release targets (addon, viewer, sandbox)
 	@echo   make test           Run Crystal specifications (spec/)
 	@echo   make docs           Generate offline HTML API documentation in docs/
 	@echo   make editor         Launch Godot Editor with addon loaded

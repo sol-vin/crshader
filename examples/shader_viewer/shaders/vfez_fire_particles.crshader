@@ -1,0 +1,47 @@
+# =============================================================================
+# VFEZ: Stylized Fire & Smoke Particle Simulation
+# =============================================================================
+# Inspired by alexnikop/VFEZ-godot VFX.
+# Simulates procedural flame embers rising with turbulent swirl, drag, and
+# dynamic lifetime color grading from hot yellow to dark smoke ash.
+
+shader_type :particles
+
+uniform initial_speed : Float32 = 4.0, hint: hint_range(1.0, 20.0)
+uniform spread_factor : Float32 = 1.2, hint: hint_range(0.0, 5.0)
+uniform buoyancy_accel : Float32 = 3.5
+uniform turbulence_strength : Float32 = 2.0
+uniform flame_start_color : Color = Color.new(1.0, 0.85, 0.2, 1.0), hint: :source_color
+uniform flame_mid_color : Color = Color.new(0.95, 0.35, 0.05, 1.0), hint: :source_color
+uniform smoke_end_color : Color = Color.new(0.15, 0.15, 0.15, 0.0), hint: :source_color
+
+def start
+  # Random initial velocity spread based on particle SEED
+  rand_x = (sin(float(INDEX) * 12.9898 + SEED) - 0.5) * spread_factor
+  rand_z = (cos(float(INDEX) * 78.233 + SEED) - 0.5) * spread_factor
+  rand_speed = initial_speed * (0.8 + 0.4 * fract(sin(float(INDEX)) * 43758.5453))
+
+  VELOCITY = vec3(rand_x, rand_speed, rand_z)
+  COLOR = flame_start_color
+end
+
+def process
+  # Normalized lifetime (0.0 to 1.0)
+  progress = clamp(1.0 - (LIFETIME / max(LIFETIME + DELTA, 0.001)), 0.0, 1.0)
+
+  # Upward buoyancy and turbulence swirl
+  swirl_x = sin(TIME * 4.0 + float(INDEX)) * turbulence_strength
+  swirl_z = cos(TIME * 4.0 + float(INDEX)) * turbulence_strength
+  VELOCITY.x += swirl_x * DELTA
+  VELOCITY.y += buoyancy_accel * DELTA
+  VELOCITY.z += swirl_z * DELTA
+
+  # Color shift from ignition yellow to flame orange to smoke ash
+  if progress < 0.4
+    factor = progress / 0.4
+    COLOR = mix(flame_start_color, flame_mid_color, factor)
+  else
+    factor = (progress - 0.4) / 0.6
+    COLOR = mix(flame_mid_color, smoke_end_color, factor)
+  end
+end

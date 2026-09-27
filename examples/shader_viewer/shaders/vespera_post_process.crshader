@@ -1,0 +1,56 @@
+# =============================================================================
+# VesperaFX: Post-Processing Compositor Shader Suite
+# =============================================================================
+# Inspired by devkcud/VesperaFX.
+# Combines:
+# - ACES film curve tonemapping
+# - Chromatic aberration with radial separation
+# - Smooth cinematic vignette
+# - Procedural film grain
+
+shader_type :canvas_item
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, filter: :linear
+uniform exposure : Float32 = 1.1, hint: hint_range(0.1, 5.0)
+uniform chromatic_aberration : Float32 = 0.004, hint: hint_range(0.0, 0.02)
+uniform vignette_intensity : Float32 = 0.35, hint: hint_range(0.0, 1.0)
+uniform grain_amount : Float32 = 0.025, hint: hint_range(0.0, 0.1)
+
+# ACES Film curve tonemapping approximation
+def aces_tonemap(x : Vec3) : Vec3
+  a = 2.51
+  b = 0.03
+  c = 2.43
+  d = 0.59
+  e = 0.14
+  clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0)
+end
+
+def fragment
+  uv = UV
+  dir_from_center = uv - vec2(0.5, 0.5)
+  dist_from_center = length(dir_from_center)
+
+  # 1. Chromatic Aberration: split channels along radial direction
+  offset = dir_from_center * chromatic_aberration * dist_from_center
+  r = texture(screen_texture, uv - offset).r
+  g = texture(screen_texture, uv).g
+  b = texture(screen_texture, uv + offset).b
+  color = vec3(r, g, b)
+
+  # 2. Exposure & ACES Tonemapping
+  color = color * exposure
+  color = aces_tonemap(color)
+
+  # 3. Vignette
+  vignette = smoothstep(0.8, 0.8 - vignette_intensity, dist_from_center)
+  color = color * vignette
+
+  # 4. Procedural Film Grain
+  grain_seed = dot(uv + vec2(TIME * 0.1, TIME * -0.05), vec2(12.9898, 78.233))
+  grain = (fract(sin(grain_seed) * 43758.5453) - 0.5) * grain_amount
+  color = clamp(color + vec3(grain), 0.0, 1.0)
+
+  COLOR = vec4(color, 1.0)
+end
