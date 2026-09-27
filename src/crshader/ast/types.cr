@@ -119,7 +119,57 @@ module CrShader
       "UImage2D"             => TypeInfo.new("UImage2D", "uimage2D", "uimage2D"),
       "Image3D"              => TypeInfo.new("Image3D", "image3D", "image3D"),
       "SubpassInput"         => TypeInfo.new("SubpassInput", "subpassInput", "subpassInput"),
+
+      # Shorthand aliases & Godot math types
+      "float"                => TypeInfo.new("float", "float", "float"),
+      "int"                  => TypeInfo.new("int", "int", "int"),
+      "uint"                 => TypeInfo.new("uint", "uint", "uint"),
+      "bool"                 => TypeInfo.new("bool", "bool", "bool"),
+      "vec2"                 => TypeInfo.new("vec2", "vec2", "vec2"),
+      "vec3"                 => TypeInfo.new("vec3", "vec3", "vec3"),
+      "vec4"                 => TypeInfo.new("vec4", "vec4", "vec4"),
+      "ivec2"                => TypeInfo.new("ivec2", "ivec2", "ivec2"),
+      "ivec3"                => TypeInfo.new("ivec3", "ivec3", "ivec3"),
+      "ivec4"                => TypeInfo.new("ivec4", "ivec4", "ivec4"),
+      "uvec2"                => TypeInfo.new("uvec2", "uvec2", "uvec2"),
+      "uvec3"                => TypeInfo.new("uvec3", "uvec3", "uvec3"),
+      "uvec4"                => TypeInfo.new("uvec4", "uvec4", "uvec4"),
+      "mat2"                 => TypeInfo.new("mat2", "mat2", "mat2"),
+      "mat3"                 => TypeInfo.new("mat3", "mat3", "mat3"),
+      "mat4"                 => TypeInfo.new("mat4", "mat4", "mat4"),
+      "color"                => TypeInfo.new("color", "vec4", "vec4"),
+      "sampler2d"            => TypeInfo.new("sampler2d", "sampler2D", "sampler2D"),
+      "sampler_2d"           => TypeInfo.new("sampler_2d", "sampler2D", "sampler2D"),
+      "sampler_cube"         => TypeInfo.new("sampler_cube", "samplerCube", "samplerCube"),
+      "Vector2"              => TypeInfo.new("Vector2", "vec2", "vec2"),
+      "Vector3"              => TypeInfo.new("Vector3", "vec3", "vec3"),
+      "Vector4"              => TypeInfo.new("Vector4", "vec4", "vec4"),
     }
+
+    def self.normalize(name : String) : String
+      case name.strip
+      when "float", "Float" then "Float32"
+      when "int", "Int" then "Int32"
+      when "uint", "UInt" then "UInt32"
+      when "bool" then "Bool"
+      when "vec2", "Vector2" then "Vec2"
+      when "vec3", "Vector3" then "Vec3"
+      when "vec4", "Vector4" then "Vec4"
+      when "ivec2" then "IVec2"
+      when "ivec3" then "IVec3"
+      when "ivec4" then "IVec4"
+      when "uvec2" then "UVec2"
+      when "uvec3" then "UVec3"
+      when "uvec4" then "UVec4"
+      when "mat2" then "Mat2"
+      when "mat3" then "Mat3"
+      when "mat4" then "Mat4"
+      when "color" then "Color"
+      when "sampler2d", "sampler_2d" then "Sampler2D"
+      when "sampler_cube" then "SamplerCube"
+      else name
+      end
+    end
 
     def self.resolve(name : String, target : ShaderTarget) : String
       # Handle InOut(T) and Out(T) parameter wrappers

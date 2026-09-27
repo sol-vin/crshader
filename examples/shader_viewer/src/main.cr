@@ -1,13 +1,14 @@
 require "lapis"
 require "../../../src/crshader/editor/variable_array_control"
+require "../../../src/crshader/editor/dynamic_uniform_inspector"
 
 # =============================================================================
 # CRShaderViewerApp - Interactive Shader Viewer Demo Controller
 # =============================================================================
-# Showcases 20+ procedural shaders authored with CRShader.
+# Showcases 29+ procedural shaders authored with CRShader.
 # Supports 3D polygon meshes (Sphere, Cube, Cylinder, Torus, Prism, Capsule, Plane),
 # full-screen post-processing quads, camera compositor passes, compute shader previews,
-# and real-time uniform parameter tweaking.
+# dynamic uniform parameter inspector, 3D camera orbit/zoom, and split compare mode.
 node CrShaderViewerApp < Node3D do
   enum PipelineMode
     Material
@@ -42,6 +43,9 @@ node CrShaderViewerApp < Node3D do
   end
 
   @pivot : Godot::Node3D? = nil
+  @camera : Godot::Camera3D? = nil
+  @dir_light : Godot::DirectionalLight3D? = nil
+  @world_env : Godot::WorldEnvironment? = nil
   @mesh_instances = Hash(String, Godot::MeshInstance3D).new
   @current_shape : String = "Sphere"
 
@@ -56,6 +60,8 @@ node CrShaderViewerApp < Node3D do
   @category_option : Godot::OptionButton? = nil
   @shader_option : Godot::OptionButton? = nil
   @shape_option : Godot::OptionButton? = nil
+  @lighting_option : Godot::OptionButton? = nil
+  @search_edit : Godot::LineEdit? = nil
   @auto_rotate_check : Godot::CheckBox? = nil
 
   @param1_slider : Godot::HSlider? = nil
@@ -70,16 +76,25 @@ node CrShaderViewerApp < Node3D do
 
   @active_material : Godot::ShaderMaterial? = nil
   @array_controls_container : Godot::VBoxContainer? = nil
-  @var_array_control : CrShader::VariableArrayControl? = nil
+  @dynamic_inspector : CrShader::DynamicUniformInspector? = nil
   @auto_rotate : Bool = true
   @rotation_speed : Float32 = 0.8_f32
   @time_elapsed : Float64 = 0.0
 
   @current_shader_idx : Int32 = 0
   @current_category : String = "All"
+  @search_query : String = ""
   @filtered_indices : Array(Int32) = [] of Int32
 
-  # Comprehensive catalog of 23 shaders
+  # Camera Orbit & Zoom State
+  @is_dragging : Bool = false
+  @drag_start_pos : Vector2 = Vector2.new(0_f32, 0_f32)
+  @cam_distance : Float32 = 3.4_f32
+  @cam_rot_x : Float32 = -0.26_f32
+  @cam_rot_y : Float32 = 0.0_f32
+  @compare_mode : Bool = false
+
+  # Comprehensive catalog of 29 shaders
   @presets : Array(ShaderPreset) = [
     # 1. 3D Spatial Materials
     ShaderPreset.new(
@@ -89,6 +104,30 @@ node CrShaderViewerApp < Node3D do
       "Spatial Materials",
       "3D vertex displacement wave with dynamic spatial lighting and roughness.",
       "wave_speed", "wave_height", "metallic", "roughness"
+    ),
+    ShaderPreset.new(
+      "Stylized Anime Toon PBR",
+      "res://shaders/stylized_toon_pbr.gdshader",
+      PipelineMode::Material,
+      "Spatial Materials",
+      "Anime/game PBR toon shading with multi-band diffuse ramps, specular curves, and rim glow.",
+      "diffuse_steps", "shadow_threshold", "specular_size", "rim_power"
+    ),
+    ShaderPreset.new(
+      "Water Caustics Ocean",
+      "res://shaders/water_caustics_ocean.gdshader",
+      PipelineMode::Material,
+      "Spatial Materials",
+      "Gerstner wave surface with animated dual-layer Voronoi caustics and Beer-Lambert extinction.",
+      "wave_speed", "wave_height", "caustics_scale", "caustics_speed"
+    ),
+    ShaderPreset.new(
+      "Dissolve Burn Hologram",
+      "res://shaders/dissolve_burn_hologram.gdshader",
+      PipelineMode::Material,
+      "Spatial Materials",
+      "Procedural Voronoi dissolve with incandescent glowing ember edges and holographic scanlines.",
+      "dissolve_amount", "noise_scale", "burn_width", "holo_speed"
     ),
     ShaderPreset.new(
       "PSX Retro Vertex Snap",
@@ -133,6 +172,22 @@ node CrShaderViewerApp < Node3D do
       "scanline_speed", "scanline_intensity", "barrel_distortion", "vignette_amount"
     ),
     ShaderPreset.new(
+      "Analog VHS Glitch",
+      "res://shaders/analog_vhs_glitch.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Authentic CRT/VHS artifacts with scanline jitter, tracking noise bar, and RGB split.",
+      "tracking_jitter", "tape_crease_speed", "rgb_shift", "tube_curvature"
+    ),
+    ShaderPreset.new(
+      "Volumetric Fog Raymarching",
+      "res://shaders/volumetric_fog_raymarch.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Screen-space volumetric light shafts with depth collision and Henyey-Greenstein scattering.",
+      "fog_density", "ray_steps", "scattering_g", "max_distance"
+    ),
+    ShaderPreset.new(
       "Kuwahara Painterly Filter",
       "res://shaders/kuwahara.gdshader",
       PipelineMode::ScreenSpace,
@@ -149,52 +204,52 @@ node CrShaderViewerApp < Node3D do
       "radius", "sharpness", "eccentricity", "edge_threshold"
     ),
     ShaderPreset.new(
-      "Bayer Matrix Pixel Dither",
-      "res://shaders/pixel_dither.gdshader",
-      PipelineMode::ScreenSpace,
-      "Screen Space",
-      "Ordered 4x4 and 8x8 Bayer matrix luminance quantization and dithering filter.",
-      "dither_size", "color_depth", "contrast", "luminance_bias"
-    ),
-    ShaderPreset.new(
-      "Film Grain & Chromatic Noise",
-      "res://shaders/film_grain.gdshader",
-      PipelineMode::ScreenSpace,
-      "Screen Space",
-      "Analog celluloid film grain simulation with high-frequency temporal noise.",
-      "grain_speed", "grain_amount", "grain_size", "chromatic_spread"
-    ),
-    ShaderPreset.new(
-      "Monochrome ASCII Art Matrix",
-      "res://shaders/ascii_art.gdshader",
-      PipelineMode::ScreenSpace,
-      "Screen Space",
-      "Real-time terminal ASCII character glyph luminance quantizer.",
-      "font_size", "character_count", "edge_threshold", "monochrome_tint"
-    ),
-    ShaderPreset.new(
-      "Chromatic Aberration & Vignette",
-      "res://shaders/chromatic_vignette.gdshader",
-      PipelineMode::ScreenSpace,
-      "Screen Space",
-      "Lens optical chromatic dispersion with radial optical falloff vignette.",
-      "dispersion_amount", "vignette_radius", "falloff_smoothness", "blur_amount"
-    ),
-    ShaderPreset.new(
-      "Kawase Multi-Pass Bloom",
-      "res://shaders/bloom_kawase.gdshader",
-      PipelineMode::ScreenSpace,
-      "Screen Space",
-      "High-performance dual Kawase bloom filter for radiant glowing light sources.",
-      "bloom_intensity", "bloom_threshold", "bloom_radius", "blend_mode"
-    ),
-    ShaderPreset.new(
-      "Sobel Edge Detection Outline",
+      "Sobel Edge Outline",
       "res://shaders/edge_detection_sobel.gdshader",
       PipelineMode::ScreenSpace,
       "Screen Space",
-      "Convolution kernel edge extraction for stylized cel-shading and outlines.",
-      "edge_thickness", "edge_threshold", "outline_intensity", "background_fade"
+      "Multi-axis gradient convolution edge-detection filter for comic cell-outlines.",
+      "threshold", "edge_intensity", "edge_color", "outline_thickness"
+    ),
+    ShaderPreset.new(
+      "Film Grain & Noise",
+      "res://shaders/film_grain.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Temporal animated cinematic silver-halide photographic film emulsion noise.",
+      "grain_amount", "grain_size", "colored_noise", "lum_bias"
+    ),
+    ShaderPreset.new(
+      "Pixel Art Downscaler",
+      "res://shaders/pixel_dither.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Grid pixel quantizer mapping viewports down to retro handheld resolutions.",
+      "pixel_scale", "dither_amount", "color_depth", "contrast"
+    ),
+    ShaderPreset.new(
+      "ASCII Terminal Art",
+      "res://shaders/ascii_art.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Procedural monospace character glyph matrix reproducing early mainframe displays.",
+      "char_size", "color_mode", "green_phosphor", "scanlines"
+    ),
+    ShaderPreset.new(
+      "Kawase Bloom Glow",
+      "res://shaders/bloom_kawase.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Dual-filter pyramid downsample and upsample Kawase bloom glow pass.",
+      "bloom_threshold", "bloom_intensity", "glow_radius", "blend_mode"
+    ),
+    ShaderPreset.new(
+      "Chromatic Vignette",
+      "res://shaders/chromatic_vignette.gdshader",
+      PipelineMode::ScreenSpace,
+      "Screen Space",
+      "Radial optical prism aberration with dark corner camera exposure falloff.",
+      "aberration_strength", "vignette_radius", "vignette_softness", "color_fringe"
     ),
     ShaderPreset.new(
       "Color Grading & Tonemapping",
@@ -304,6 +359,14 @@ node CrShaderViewerApp < Node3D do
       "Massively parallel 100,000 particle N-body attractor simulation in GLSL.",
       "gravity_strength", "damping", "particle_speed", "vortex_twist"
     ),
+    ShaderPreset.new(
+      "Compute Flowfield Particles",
+      "res://shaders/compute_flowfield_particles.glsl",
+      PipelineMode::Compute,
+      "Compute Simulation",
+      "100,000+ compute particles driven by 3D Curl Noise flow fields with barrier synchronization.",
+      "particle_count", "noise_scale", "flow_speed", "delta_time"
+    ),
   ]
 
   def _ready : Void
@@ -315,6 +378,15 @@ node CrShaderViewerApp < Node3D do
     # Locate 3D elements
     if node = get_node_or_null("Pivot3D")
       @pivot = node.as?(Godot::Node3D)
+    end
+    if node = get_node_or_null("Camera3D")
+      @camera = node.as?(Godot::Camera3D)
+    end
+    if node = get_node_or_null("DirectionalLight3D")
+      @dir_light = node.as?(Godot::DirectionalLight3D)
+    end
+    if node = get_node_or_null("WorldEnvironment")
+      @world_env = node.as?(Godot::WorldEnvironment)
     end
 
     # Cache all mesh instances
@@ -362,33 +434,7 @@ node CrShaderViewerApp < Node3D do
       @desc_label = node.as?(Godot::Label)
     end
 
-    # Locate sliders
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow1/Param1Row/Param1Slider")
-      @param1_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow1/Param1Row/Param1Label")
-      @param1_label = node.as?(Godot::Label)
-    end
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow1/Param2Row/Param2Slider")
-      @param2_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow1/Param2Row/Param2Label")
-      @param2_label = node.as?(Godot::Label)
-    end
-
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow2/Param3Row/Param3Slider")
-      @param3_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow2/Param3Row/Param3Label")
-      @param3_label = node.as?(Godot::Label)
-    end
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow2/Param4Row/Param4Slider")
-      @param4_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("UI/Margin/Panel/VBox/SlidersRow2/Param4Row/Param4Label")
-      @param4_label = node.as?(Godot::Label)
-    end
-
+    # Locate container for dynamic parameter inspector
     if node = get_node_or_null("UI/Margin/Panel/VBox")
       @array_controls_container = node.as?(Godot::VBoxContainer)
     end
@@ -447,29 +493,64 @@ node CrShaderViewerApp < Node3D do
       end
     end
 
-    # Connect parameter sliders
-    if s = @param1_slider
-      s.connect("value_changed") do |args|
-        val = args.first?.try(&.as_f) || 1.0_f32
-        update_param(1, val.to_f64)
+    # Enhanced Toolbar: Search Bar, Lighting Presets, Compare Button, Reset View
+    if header = get_node_or_null("UI/Margin/Panel/VBox/Header")
+      # Compare Toggle Button
+      compare_btn = Godot.create(Godot::Button)
+      if compare_btn
+        compare_btn.call("set_text", "⇄ Compare (Space)")
+        compare_btn.call("set_tooltip_text", "Toggle between base unshaded mesh and active shader")
+        compare_btn.connect("pressed") do |_args|
+          toggle_compare_mode
+        end
+        header.call("add_child", compare_btn)
+      end
+
+      # Reset View Button
+      reset_cam_btn = Godot.create(Godot::Button)
+      if reset_cam_btn
+        reset_cam_btn.call("set_text", "👁 Reset View (R)")
+        reset_cam_btn.call("set_tooltip_text", "Reset camera orbit and zoom distance")
+        reset_cam_btn.connect("pressed") do |_args|
+          reset_camera_and_params
+        end
+        header.call("add_child", reset_cam_btn)
+      end
+
+      # Search Input Box
+      search_input = Godot.create(Godot::LineEdit)
+      if search_input
+        search_input.call("set_custom_minimum_size", Vector2.new(160_f32, 0_f32))
+        search_input.call("set_placeholder", "🔍 Search Shaders...")
+        search_input.connect("text_changed") do |args|
+          query = args.first?.try(&.as_s) || ""
+          filter_search(query)
+        end
+        header.call("add_child", search_input)
+        @search_edit = search_input
       end
     end
-    if s = @param2_slider
-      s.connect("value_changed") do |args|
-        val = args.first?.try(&.as_f) || 1.0_f32
-        update_param(2, val.to_f64)
+
+    # Mount Lighting Studio Option in ControlsRow2
+    if row2 = get_node_or_null("UI/Margin/Panel/VBox/ControlsRow2")
+      light_lbl = Godot.create(Godot::Label)
+      if light_lbl
+        light_lbl.call("set_text", "Studio Light:")
+        row2.call("add_child", light_lbl)
       end
-    end
-    if s = @param3_slider
-      s.connect("value_changed") do |args|
-        val = args.first?.try(&.as_f) || 1.0_f32
-        update_param(3, val.to_f64)
-      end
-    end
-    if s = @param4_slider
-      s.connect("value_changed") do |args|
-        val = args.first?.try(&.as_f) || 1.0_f32
-        update_param(4, val.to_f64)
+
+      light_opt = Godot.create(Godot::OptionButton)
+      if light_opt
+        light_presets = ["Studio 3-Point", "Cyberpunk Neon", "Golden Hour Sunset", "Overcast Flat", "Dark Noir"]
+        light_presets.each_with_index do |lp, idx|
+          light_opt.call("add_item", lp, idx)
+        end
+        light_opt.connect("item_selected") do |args|
+          idx = args.first?.try(&.as_i) || 0
+          select_lighting_preset(idx)
+        end
+        row2.call("add_child", light_opt)
+        @lighting_option = light_opt
       end
     end
   end
@@ -479,7 +560,9 @@ node CrShaderViewerApp < Node3D do
     @filtered_indices.clear
 
     @presets.each_with_index do |p, idx|
-      if cat_name == "All" || p.category == cat_name
+      matches_cat = (cat_name == "All" || p.category == cat_name)
+      matches_search = @search_query.empty? || p.name.downcase.includes?(@search_query.downcase) || p.description.downcase.includes?(@search_query.downcase)
+      if matches_cat && matches_search
         @filtered_indices << idx
       end
     end
@@ -502,6 +585,11 @@ node CrShaderViewerApp < Node3D do
     end
   end
 
+  def filter_search(query : String) : Void
+    @search_query = query.strip
+    filter_category(@current_category)
+  end
+
   def navigate_preset(offset : Int32) : Void
     return if @filtered_indices.empty?
     curr_sub_idx = @filtered_indices.index(@current_shader_idx) || 0
@@ -521,19 +609,81 @@ node CrShaderViewerApp < Node3D do
     end
   end
 
+  def select_lighting_preset(idx : Int32) : Void
+    light = @dir_light
+    return unless light
+
+    case idx
+    when 0 # Studio 3-Point
+      light.call("set_rotation_degrees", Vector3.new(-45_f32, 45_f32, 0_f32))
+      light.call("set_color", Color.new(1.0_f32, 0.98_f32, 0.95_f32, 1.0_f32))
+      light.call("set_param", 2, 1.2_f32) # PARAM_ENERGY
+    when 1 # Cyberpunk Neon
+      light.call("set_rotation_degrees", Vector3.new(-30_f32, -60_f32, 0_f32))
+      light.call("set_color", Color.new(0.9_f32, 0.2_f32, 0.8_f32, 1.0_f32))
+      light.call("set_param", 2, 1.5_f32)
+    when 2 # Golden Hour Sunset
+      light.call("set_rotation_degrees", Vector3.new(-15_f32, 80_f32, 0_f32))
+      light.call("set_color", Color.new(1.0_f32, 0.6_f32, 0.2_f32, 1.0_f32))
+      light.call("set_param", 2, 1.8_f32)
+    when 3 # Overcast Flat
+      light.call("set_rotation_degrees", Vector3.new(-80_f32, 0_f32, 0_f32))
+      light.call("set_color", Color.new(0.85_f32, 0.9_f32, 1.0_f32, 1.0_f32))
+      light.call("set_param", 2, 0.8_f32)
+    when 4 # Dark Noir
+      light.call("set_rotation_degrees", Vector3.new(-60_f32, 120_f32, 0_f32))
+      light.call("set_color", Color.new(1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32))
+      light.call("set_param", 2, 2.5_f32)
+    end
+  end
+
+  def toggle_compare_mode : Void
+    @compare_mode = !@compare_mode
+    if active_mesh = @mesh_instances[@current_shape]?
+      if @compare_mode
+        active_mesh.call("set_surface_override_material", 0, nil)
+        @post_process_rect.try &.call("set_visible", false)
+        @mode_label.try &.call("set_text", "Mode: [COMPARE] Original Surface")
+      else
+        active_mesh.call("set_surface_override_material", 0, @active_material)
+        preset = @presets[@current_shader_idx]?
+        if preset && (preset.mode == PipelineMode::ScreenSpace || preset.mode == PipelineMode::Compositor)
+          @post_process_rect.try &.call("set_visible", true)
+        end
+        activate_shader(@current_shader_idx)
+      end
+    end
+  end
+
+  def reset_camera_and_params : Void
+    @cam_distance = 3.4_f32
+    @cam_rot_x = -0.26_f32
+    @cam_rot_y = 0.0_f32
+    update_camera_transform
+    @dynamic_inspector.try &.reset_all_defaults
+  end
+
+  def update_camera_transform : Void
+    if cam = @camera
+      x = @cam_distance * Math.sin(@cam_rot_y) * Math.cos(@cam_rot_x)
+      y = @cam_distance * Math.sin(-@cam_rot_x) + 0.6_f32
+      z = @cam_distance * Math.cos(@cam_rot_y) * Math.cos(@cam_rot_x)
+      cam.call("set_position", Vector3.new(x.to_f32, y.to_f32, z.to_f32))
+      cam.call("look_at", Vector3.new(0_f32, 0.6_f32, 0_f32), Vector3.new(0_f32, 1_f32, 0_f32))
+    end
+  end
+
   def activate_shader(index : Int32) : Void
     return if index < 0 || index >= @presets.size
     @current_shader_idx = index
     preset = @presets[index]
 
-    # Update OptionButton selection
     if opt = @shader_option
       if sub_idx = @filtered_indices.index(index)
         opt.call("select", sub_idx)
       end
     end
 
-    # Update Labels
     if lbl = @shader_name_label
       lbl.call("set_text", "Active: #{preset.name} [#{preset.category}]")
     end
@@ -550,13 +700,6 @@ node CrShaderViewerApp < Node3D do
       mode_lbl.call("set_text", mode_name)
     end
 
-    # Update slider labels to match preset uniform names
-    @param1_label.try &.call("set_text", "#{preset.param1_name.capitalize}:")
-    @param2_label.try &.call("set_text", "#{preset.param2_name.capitalize}:")
-    @param3_label.try &.call("set_text", "#{preset.param3_name.capitalize}:")
-    @param4_label.try &.call("set_text", "#{preset.param4_name.capitalize}:")
-
-    # Pipeline Mode Visibility Dispatch
     case preset.mode
     when PipelineMode::Material
       @pivot.try &.call("set_visible", true)
@@ -565,7 +708,7 @@ node CrShaderViewerApp < Node3D do
       apply_material_shader(preset.path)
 
     when PipelineMode::ScreenSpace, PipelineMode::Compositor
-      @pivot.try &.call("set_visible", true) # Keep 3D meshes rotating as background scene!
+      @pivot.try &.call("set_visible", true)
       @post_process_rect.try &.call("set_visible", true)
       @sprite_2d.try &.call("set_visible", false)
       apply_post_process_shader(preset.path)
@@ -577,24 +720,28 @@ node CrShaderViewerApp < Node3D do
       apply_compute_shader_preview(preset.path)
     end
 
-    # Dynamic inspector control for variable-size arrays / palettes
-    if preset.name.includes?("Palette Swap")
-      if container = @array_controls_container
-        ctrl = @var_array_control
-        if ctrl.nil?
-          ctrl = CrShader::VariableArrayControl.new
-          ctrl.configure("target_palette", @active_material)
-          container.call("add_child", ctrl)
-          @var_array_control = ctrl
-        else
-          ctrl.configure("target_palette", @active_material)
-        end
+    # Mount Dynamic Uniform Inspector
+    if container = @array_controls_container
+      inspector = @dynamic_inspector
+      if inspector.nil?
+        inspector = CrShader::DynamicUniformInspector.new
+        container.call("add_child", inspector)
+        @dynamic_inspector = inspector
       end
-    else
-      if ctrl = @var_array_control
-        ctrl.get_parent.try(&.call("remove_child", ctrl))
-        ctrl.call("queue_free")
-        @var_array_control = nil
+
+      # Locate .crshader source file on disk
+      cr_name = preset.path.sub(/\.(gdshader|glsl)$/, ".crshader")
+      disk_paths = [
+        cr_name.sub("res://shaders/", "examples/shader_viewer/shaders/"),
+        cr_name.sub("res://shaders/", "examples/"),
+        cr_name.sub("res://shaders/", "shaders/"),
+      ]
+
+      found_path = disk_paths.find { |p| File.exists?(p) }
+      if found_path
+        inspector.configure_from_source(File.read(found_path), @active_material)
+      else
+        inspector.clear_controls
       end
     end
   end
@@ -609,7 +756,6 @@ node CrShaderViewerApp < Node3D do
     mat.call("set_shader", shader)
     @active_material = mat
 
-    # Apply to current active 3D mesh
     if active_mesh = @mesh_instances[@current_shape]?
       active_mesh.call("set_surface_override_material", 0, mat)
     end
@@ -635,11 +781,9 @@ node CrShaderViewerApp < Node3D do
   end
 
   def apply_compute_shader_preview(path : String) : Void
-    # For compute shaders, render fallback procedural preview material on full screen
     mat = Godot.create(Godot::ShaderMaterial)
     return unless mat
 
-    # Load procedural plasma or blur fallback for visual compute feedback
     res_loader = Godot::ResourceLoader.new(Godot::ResourceLoader.singleton_ptr)
     if fallback_shader = res_loader.call_obj("load", "res://shaders/basic_spatial.gdshader")
       mat.call("set_shader", fallback_shader)
@@ -652,33 +796,57 @@ node CrShaderViewerApp < Node3D do
     Godot.print("[CRShaderViewer] Error setting compute preview: #{ex.message}")
   end
 
-  def update_param(slot : Int32, value : Float64) : Void
-    preset = @presets[@current_shader_idx]?
-    return unless preset && @active_material
+  def _unhandled_input(event : Godot::InputEvent) : Void
+    if event.is_a?(Godot::InputEventMouseButton)
+      btn_idx = event.call("get_button_index").to_i
+      is_pressed = event.call("is_pressed").as_bool
 
-    param_name = case slot
-                 when 1 then preset.param1_name
-                 when 2 then preset.param2_name
-                 when 3 then preset.param3_name
-                 when 4 then preset.param4_name
-                 else        return
-                 end
+      if is_pressed
+        if btn_idx == 4 # WHEEL_UP
+          @cam_distance = Math.max(1.2_f32, @cam_distance - 0.25_f32)
+          update_camera_transform
+        elsif btn_idx == 5 # WHEEL_DOWN
+          @cam_distance = Math.min(8.0_f32, @cam_distance + 0.25_f32)
+          update_camera_transform
+        elsif btn_idx == 1 # MOUSE_BUTTON_LEFT
+          @is_dragging = true
+          @drag_start_pos = event.call("get_position").as_v2
+        end
+      else
+        if btn_idx == 1
+          @is_dragging = false
+        end
+      end
+    elsif event.is_a?(Godot::InputEventMouseMotion) && @is_dragging
+      pos = event.call("get_position").as_v2
+      diff = pos - @drag_start_pos
+      @drag_start_pos = pos
 
-    if mat = @active_material
-      mat.call("set_shader_parameter", param_name, value)
+      @cam_rot_y += diff.x * 0.008_f32
+      @cam_rot_x = Math.max(-1.4_f32, Math.min(1.4_f32, @cam_rot_x + diff.y * 0.008_f32))
+      update_camera_transform
+    elsif event.is_a?(Godot::InputEventKey) && event.call("is_pressed").as_bool
+      key = event.call("get_keycode").to_i
+      if key == 32 # KEY_SPACE
+        toggle_compare_mode
+      elsif key == 4194319 || key == 74 # KEY_LEFT or 'J'
+        navigate_preset(-1)
+      elsif key == 4194321 || key == 75 # KEY_RIGHT or 'K'
+        navigate_preset(1)
+      elsif key == 82 # KEY_R
+        reset_camera_and_params
+      end
     end
   end
 
   def _process(delta : Float64) : Void
     @time_elapsed += delta
 
-    # Rotate 3D preview meshes if auto-rotate enabled
-    if @auto_rotate && (pivot = @pivot)
+    if @auto_rotate && (pivot = @pivot) && !@is_dragging
       pivot.call("rotate_y", (@rotation_speed * delta.to_f32).to_f64)
       pivot.call("rotate_x", (@rotation_speed * 0.35_f32 * delta.to_f32).to_f64)
     end
 
-    # Real-time performance monitor
     if label = @fps_label
       fps = delta > 0.0 ? (1.0 / delta).round.to_i : 60
       ms = (delta * 1000.0).round(1)

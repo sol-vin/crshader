@@ -1,0 +1,48 @@
+shader_type :spatial
+render_mode :cull_disabled, :depth_draw_opaque
+
+require "std/math"
+require "std/noise"
+
+group "Base Appearance"
+uniform albedo_color : Color = Color.new(0.15, 0.45, 0.85, 1.0), hint: :source_color
+uniform roughness_val : Float32 = 0.35, hint: range(0.0, 1.0, 0.05)
+
+group "Dissolve Burn"
+uniform dissolve_amount : Float32 = 0.35, hint: range(0.0, 1.0, 0.02)
+uniform noise_scale : Float32 = 4.0, hint: range(1.0, 16.0, 0.5)
+uniform burn_width : Float32 = 0.08, hint: range(0.01, 0.2, 0.01)
+uniform burn_color : Color = Color.new(1.0, 0.45, 0.05, 1.0), hint: :source_color
+
+group "Hologram Scanlines"
+uniform holo_speed : Float32 = 3.0, hint: range(0.5, 10.0, 0.5)
+uniform holo_density : Float32 = 30.0, hint: range(5.0, 60.0, 1.0)
+uniform holo_intensity : Float32 = 0.5, hint: range(0.0, 1.0, 0.05)
+
+varying v_world_pos : Vec3
+
+def vertex
+  v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz
+end
+
+def fragment
+  n = value_noise(v_world_pos.xz * noise_scale)
+  
+  if n < dissolve_amount
+    discard
+  end
+  
+  burn_factor = smoothstep(dissolve_amount, dissolve_amount + burn_width, n)
+  edge_glow = (1.0 - burn_factor) * 5.0
+  
+  scanline = sin(v_world_pos.y * holo_density + TIME * holo_speed) * 0.5 + 0.5
+  holo_effect = scanline * holo_intensity
+  
+  base_rgb = albedo_color.rgb + vec3(holo_effect, holo_effect, holo_effect) * 0.3
+  emissive_rgb = burn_color.rgb * edge_glow
+  
+  ALBEDO = base_rgb
+  EMISSION = emissive_rgb
+  ROUGHNESS = roughness_val
+  METALLIC = 0.2
+end

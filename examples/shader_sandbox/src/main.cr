@@ -1,15 +1,17 @@
 require "lapis"
 require "../../../src/crshader/compiler"
 require "../../../src/crshader/editor/variable_array_control"
+require "../../../src/crshader/editor/dynamic_uniform_inspector"
 
 # =============================================================================
 # CrShaderSandboxApp - Interactive Split-Screen Shader Sandbox & Live Studio
 # =============================================================================
 # Side-by-side live shader coding environment:
-# Left pane: Code editor with syntax highlighting, 20+ reference samples,
-# template presets, live compiler diagnostics, and generated GDShader preview.
+# Left pane: Code editor with syntax highlighting, 25+ reference samples,
+# template presets, debounced live auto-compilation, inline error navigation,
+# DSL snippet inserter, and generated GDShader preview.
 # Right pane: Live 2D/3D viewport with 7 polygon meshes, screen-space quads,
-# background patterns, texture slots, and real-time uniform parameter tweaking.
+# background patterns, texture slots, and dynamic uniform parameter inspector.
 node CrShaderSandboxApp < Control do
   enum SandboxMode
     Spatial
@@ -43,16 +45,6 @@ node CrShaderSandboxApp < Control do
   @active_material : Godot::ShaderMaterial? = nil
   @current_mode : SandboxMode = SandboxMode::Spatial
 
-  @param1_slider : Godot::HSlider? = nil
-  @param2_slider : Godot::HSlider? = nil
-  @param3_slider : Godot::HSlider? = nil
-  @param4_slider : Godot::HSlider? = nil
-
-  @param1_label : Godot::Label? = nil
-  @param2_label : Godot::Label? = nil
-  @param3_label : Godot::Label? = nil
-  @param4_label : Godot::Label? = nil
-
   @auto_rotate : Bool = true
   @rotation_speed : Float32 = 0.8_f32
   @time_elapsed : Float64 = 0.0
@@ -60,7 +52,13 @@ node CrShaderSandboxApp < Control do
   @current_sample_pristine : String = ""
   @sample_files = Array(String).new
   @inspector_vbox : Godot::VBoxContainer? = nil
-  @var_array_control : CrShader::VariableArrayControl? = nil
+  @dynamic_inspector : CrShader::DynamicUniformInspector? = nil
+
+  # Live Coding & Debounced Compilation
+  @auto_compile : Bool = true
+  @dirty : Bool = false
+  @debounce_time : Float64 = 0.35_f64
+  @last_error_line : Int32 = 0
 
   def _ready : Void
     Godot.print("==================================================================")
@@ -129,40 +127,18 @@ node CrShaderSandboxApp < Control do
       @sprite_2d = node.as?(Godot::Sprite2D)
     end
 
-    # Locate Inspector Sliders
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P1Row/P1Slider")
-      @param1_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P1Row/P1Label")
-      @param1_label = node.as?(Godot::Label)
-    end
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P2Row/P2Slider")
-      @param2_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow1/P2Row/P2Label")
-      @param2_label = node.as?(Godot::Label)
-    end
-
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P3Row/P3Slider")
-      @param3_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P3Row/P3Label")
-      @param3_label = node.as?(Godot::Label)
-    end
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P4Row/P4Slider")
-      @param4_slider = node.as?(Godot::HSlider)
-    end
-    if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox/SlidersRow2/P4Row/P4Label")
-      @param4_label = node.as?(Godot::Label)
-    end
-
+    # Locate Inspector container
     if node = get_node_or_null("Split/RightPane/VBox/InspectorPanel/VBox")
       @inspector_vbox = node.as?(Godot::VBoxContainer)
     end
 
     setup_syntax_highlighting
     setup_ui
-    setup_sample_gallery
+    populate_samples
+    select_shape("Sphere")
+    set_sandbox_mode(SandboxMode::Spatial)
+
+    # Initial template load
     load_template("New 3D Spatial")
   end
 
@@ -173,18 +149,19 @@ node CrShaderSandboxApp < Control do
     highlighter = Godot.create(Godot::CodeHighlighter)
     return unless highlighter
 
-    kw_color = Color.new(0.85_f32, 0.45_f32, 0.9_f32, 1.0_f32)     # Purple
-    type_color = Color.new(0.35_f32, 0.75_f32, 1.0_f32, 1.0_f32)   # Cyan / Blue
-    builtin_color = Color.new(1.0_f32, 0.75_f32, 0.3_f32, 1.0_f32) # Orange
-    fn_color = Color.new(0.45_f32, 0.85_f32, 0.6_f32, 1.0_f32)     # Light Green
-    comment_color = Color.new(0.5_f32, 0.55_f32, 0.6_f32, 1.0_f32) # Gray
-    string_color = Color.new(0.95_f32, 0.85_f32, 0.4_f32, 1.0_f32) # Gold
-    num_color = Color.new(0.8_f32, 0.6_f32, 1.0_f32, 1.0_f32)      # Violet
+    kw_color = Color.new(0.85_f32, 0.45_f32, 0.9_f32, 1.0_f32)
+    type_color = Color.new(0.35_f32, 0.75_f32, 1.0_f32, 1.0_f32)
+    builtin_color = Color.new(1.0_f32, 0.75_f32, 0.3_f32, 1.0_f32)
+    fn_color = Color.new(0.45_f32, 0.85_f32, 0.6_f32, 1.0_f32)
+    comment_color = Color.new(0.5_f32, 0.55_f32, 0.6_f32, 1.0_f32)
+    string_color = Color.new(0.95_f32, 0.85_f32, 0.4_f32, 1.0_f32)
+    num_color = Color.new(0.8_f32, 0.6_f32, 1.0_f32, 1.0_f32)
 
     keywords = [
       "shader", "shader_type", "render_mode", "setup_gdshader",
       "uniform", "instance_uniform", "global_uniform", "varying", "const",
       "buffer", "push_constant", "shared", "image2d", "local_size", "require",
+      "group", "subgroup", "field",
       "def", "end", "class", "struct", "module", "if", "else", "elsif", "unless",
       "while", "until", "for", "in", "case", "when", "return", "break", "next",
       "true", "false", "nil"
@@ -244,7 +221,52 @@ node CrShaderSandboxApp < Control do
       end
     end
 
-    # 3. Compile & Reset Buttons
+    # 3. Live Auto-Compile & Snippet Toolbar
+    if toolbar2 = get_node_or_null("Split/LeftPane/VBox/Toolbar2")
+      # Auto-Compile CheckBox
+      auto_check = Godot.create(Godot::CheckBox)
+      if auto_check
+        auto_check.call("set_text", "Auto-Compile")
+        auto_check.call("set_pressed", true)
+        auto_check.connect("toggled") do |args|
+          @auto_compile = args.first?.try(&.as_bool) || false
+        end
+        toolbar2.call("add_child", auto_check)
+      end
+
+      # Snippets Dropdown
+      snippet_opt = Godot.create(Godot::OptionButton)
+      if snippet_opt
+        snippet_opt.call("add_item", "⚡ Insert Snippet...", 0)
+        snippets = [
+          "Uniform (Float Range)",
+          "Uniform (Color)",
+          "Uniform (Texture)",
+          "Uniform (Palette)",
+          "Stage (Fragment)",
+          "Stage (Vertex)",
+          "Require (std/dither)",
+          "Require (std/curl_noise)",
+          "Require (std/color_spaces)",
+          "Require (std/atmosphere)",
+          "Require (std/glitch)",
+          "Generate Node"
+        ]
+        snippets.each_with_index do |sn, idx|
+          snippet_opt.call("add_item", sn, idx + 1)
+        end
+        snippet_opt.connect("item_selected") do |args|
+          idx = args.first?.try(&.as_i) || 0
+          if idx > 0
+            insert_snippet(snippets[idx - 1])
+            snippet_opt.call("select", 0)
+          end
+        end
+        toolbar2.call("add_child", snippet_opt)
+      end
+    end
+
+    # Connect compile & reset buttons
     if btn = get_node_or_null("Split/LeftPane/VBox/Toolbar2/CompileBtn")
       btn.connect("pressed") { compile_code }
     end
@@ -258,7 +280,15 @@ node CrShaderSandboxApp < Control do
       end
     end
 
-    # 4. Viewport Toolbars
+    # Source Edit text change for live debounce
+    if edit = @source_edit
+      edit.connect("text_changed") do |_args|
+        @dirty = true
+        @debounce_time = 0.35_f64
+      end
+    end
+
+    # Viewport Toolbars
     if sh_opt = @shape_option
       sh_opt.call("clear")
       shapes = ["Sphere", "Cube", "Cylinder", "Torus", "Prism", "Capsule", "Plane"]
@@ -290,89 +320,89 @@ node CrShaderSandboxApp < Control do
         @auto_rotate = args.first?.try(&.as_bool) || false
       end
     end
+  end
 
-    # 5. Inspector Sliders
-    if s1 = @param1_slider
-      s1.connect("value_changed") { |a| update_uniform("speed", a.first?.try(&.as_f) || 1.0_f32) }
-    end
-    if s2 = @param2_slider
-      s2.connect("value_changed") { |a| update_uniform("intensity", a.first?.try(&.as_f) || 1.0_f32) }
-    end
-    if s3 = @param3_slider
-      s3.connect("value_changed") { |a| update_uniform("radius", a.first?.try(&.as_f) || 4.0_f32) }
-    end
-    if s4 = @param4_slider
-      s4.connect("value_changed") { |a| update_uniform("roughness", a.first?.try(&.as_f) || 0.3_f32) }
+  def insert_snippet(name : String) : Void
+    code_to_insert = case name
+                     when "Uniform (Float Range)"
+                       "uniform speed : Float32 = 1.0, hint: range(0.0, 5.0, 0.1)\n"
+                     when "Uniform (Color)"
+                       "uniform tint : Color = Color.new(0.2, 0.6, 1.0, 1.0), hint: :source_color\n"
+                     when "Uniform (Texture)"
+                       "uniform albedo_tex : Sampler2D, filter: :linear, repeat: :enable\n"
+                     when "Uniform (Palette)"
+                       "uniform target_palette : ColorPalette = resource(\"res://default_palettes/cottonville.tres\")\n"
+                     when "Stage (Fragment)"
+                       "def fragment\n  COLOR = vec4(UV.x, UV.y, 0.5, 1.0)\nend\n"
+                     when "Stage (Vertex)"
+                       "def vertex\n  VERTEX.y = VERTEX.y + sin(TIME * 2.0 + VERTEX.x) * 0.1\nend\n"
+                     when "Require (std/dither)"
+                       "require \"std/dither\"\n"
+                     when "Require (std/curl_noise)"
+                       "require \"std/curl_noise\"\n"
+                     when "Require (std/color_spaces)"
+                       "require \"std/color_spaces\"\n"
+                     when "Require (std/atmosphere)"
+                       "require \"std/atmosphere\"\n"
+                     when "Require (std/glitch)"
+                       "require \"std/glitch\"\n"
+                     when "Generate Node"
+                       "generate_node :mesh3d, \"GeneratedShaderMesh\"\n"
+                     else
+                       ""
+                     end
+
+    if edit = @source_edit
+      curr_line = edit.call("get_caret_line").as_i
+      edit.call("insert_line_at", curr_line, code_to_insert)
+      @dirty = true
+      @debounce_time = 0.2_f64
     end
   end
 
-  def setup_sample_gallery : Void
+  def populate_samples : Void
     opt = @sample_option
     return unless opt
 
     opt.call("clear")
-    opt.call("add_item", "Select Sample Shader...", 0)
-
-    sample_dir = "res://samples"
     @sample_files.clear
 
-    files = [
-      "basic_spatial.crshader", "psx_retro.crshader", "gdquest_forcefield_shield.crshader",
-      "toon_water.crshader", "vfez_fire_particles.crshader", "crt_scanlines.crshader",
-      "kuwahara.crshader", "image_effects_kuwahara.crshader", "pixel_dither.crshader",
-      "film_grain.crshader", "ascii_art.crshader", "chromatic_vignette.crshader",
-      "bloom_kawase.crshader", "edge_detection_sobel.crshader", "color_grading_tonemap.crshader",
-      "color_blindness.crshader", "advanced_palette_swap.crshader", "universal_transition.crshader",
-      "vespera_post_process.crshader", "mreliptik_dither_crt.crshader", "acerola_compute_blur.crshader",
-      "compute_game_of_life.crshader", "compute_particles.crshader"
+    sample_paths = [
+      "examples/shader_sandbox/samples/*.crshader",
+      "samples/*.crshader",
+      "examples/*.crshader"
     ]
 
-    files.each_with_index do |filename, idx|
-      @sample_files << filename
-      title = filename.sub(/\.crshader$/, "").gsub("_", " ").capitalize
-      opt.call("add_item", "#{idx + 1}. #{title}", idx + 1)
+    all_files = Set(String).new
+    sample_paths.each do |p|
+      Dir.glob(p).each { |f| all_files.add(f) }
+    end
+
+    opt.call("add_item", "Load Reference Sample...", 0)
+    sorted_files = all_files.to_a.sort
+    sorted_files.each_with_index do |f, idx|
+      @sample_files << f
+      base_name = File.basename(f, ".crshader").gsub('_', ' ').capitalize
+      opt.call("add_item", "#{idx + 1}. #{base_name}", idx + 1)
     end
 
     opt.connect("item_selected") do |args|
-      sel = args.first?.try(&.as_i) || 0
-      if sel > 0
-        file = @sample_files[sel - 1]?
-        load_sample_file(file) if file
+      idx = args.first?.try(&.as_i) || 0
+      if idx > 0 && idx <= @sample_files.size
+        load_sample_file(@sample_files[idx - 1])
       end
     end
   end
 
-  def load_sample_file(filename : String) : Void
-    path = "res://samples/#{filename}"
-    res_loader = Godot::ResourceLoader.new(Godot::ResourceLoader.singleton_ptr)
-
-    # Read text from file
-    content = ""
-    # Try reading file from disk / res://
-    candidate_paths = [
-      path,
-      "samples/#{filename}",
-      "examples/shader_sandbox/samples/#{filename}",
-      "examples/#{filename}"
-    ]
-    candidate_paths.each do |p|
-      if File.exists?(p)
-        content = File.read(p)
-        break
-      end
-    end
-
-    if content.empty?
-      content = "# Sample: #{filename}\nshader_type :spatial\n\nuniform speed : Float32 = 1.0\n\ndef fragment\n  ALBEDO = vec3(0.2, 0.6, 0.9)\nend\n"
-    end
-
+  def load_sample_file(path : String) : Void
+    return unless File.exists?(path)
+    content = File.read(path)
     @current_sample_pristine = content
-    @source_edit.try &.call("set_text", content)
 
-    # Detect appropriate mode from source code
+    # Auto detect mode from shader content
     if content.includes?("shader_type :compute")
       set_sandbox_mode(SandboxMode::Compute)
-    elsif content.includes?("screen_texture") || content.includes?("SCREEN_UV")
+    elsif content.includes?("SCREEN_UV") || content.includes?("hint_screen_texture")
       set_sandbox_mode(SandboxMode::ScreenSpace)
     elsif content.includes?("shader_type :canvas_item")
       set_sandbox_mode(SandboxMode::CanvasItem)
@@ -380,93 +410,98 @@ node CrShaderSandboxApp < Control do
       set_sandbox_mode(SandboxMode::Spatial)
     end
 
+    @source_edit.try &.call("set_text", content)
     compile_code
-    set_status("Loaded sample: #{filename} (#{content.lines.size} lines)", is_error: false)
+    set_status("Loaded sample: #{File.basename(path)}", is_error: false)
   end
 
   def load_template(name : String) : Void
     code = case name
            when "New 3D Spatial"
-             <<-CRSHADER
-             shader_type :spatial
-             render_mode :cull_disabled, :depth_draw_opaque
+             set_sandbox_mode(SandboxMode::Spatial)
+             <<-CR
+               shader_type :spatial
+               render_mode :cull_disabled, :depth_draw_opaque
 
-             uniform albedo : Color = Color.new(0.2, 0.6, 0.95, 1.0)
-             uniform wave_speed : Float32 = 2.0
-             uniform wave_height : Float32 = 0.15
-             uniform roughness : Float32 = 0.3
-             uniform metallic : Float32 = 0.2
+               setup_gdshader
 
-             def vertex
-               offset = sin(TIME * wave_speed + VERTEX.x * 3.0) * wave_height
-               VERTEX.y = VERTEX.y + offset
-             end
+               uniform albedo : Color = Color.new(0.2, 0.6, 0.95, 1.0), hint: :source_color
+               uniform roughness : Float32 = 0.3, hint: hint_range(0.0, 1.0)
+               uniform metallic : Float32 = 0.2, hint: hint_range(0.0, 1.0)
+               uniform wave_speed : Float32 = 2.0, hint: range(0.1, 5.0, 0.1)
+               uniform wave_height : Float32 = 0.15, hint: range(0.0, 0.5, 0.01)
 
-             def fragment
-               ALBEDO = albedo.rgb
-               ROUGHNESS = roughness
-               METALLIC = metallic
-             end
-             CRSHADER
+               def vertex()
+                 offset = sin(TIME * wave_speed + VERTEX.x * 2.0) * wave_height
+                 VERTEX.y = VERTEX.y + offset
+               end
+
+               def fragment()
+                 ALBEDO = albedo.rgb
+                 ROUGHNESS = roughness
+                 METALLIC = metallic
+               end
+             CR
+
            when "New 2D CanvasItem"
-             <<-CRSHADER
-             shader_type :canvas_item
-             render_mode :unshaded
+             set_sandbox_mode(SandboxMode::CanvasItem)
+             <<-CR
+               shader_type :canvas_item
+               render_mode :unshaded
 
-             uniform tint : Color = Color.new(0.3, 0.8, 1.0, 1.0)
-             uniform pulse_speed : Float32 = 2.0
+               uniform tint : Color = Color.new(1.0, 0.8, 0.3, 1.0), hint: :source_color
+               uniform speed : Float32 = 3.0, hint: range(0.1, 10.0, 0.1)
+               uniform pulse_scale : Float32 = 0.2, hint: range(0.0, 0.5, 0.02)
 
-             def fragment
-               wave = sin(TIME * pulse_speed + UV.x * 6.28) * 0.5 + 0.5
-               col = texture(TEXTURE, UV) * tint
-               COLOR = col * (0.8 + wave * 0.4)
-             end
-             CRSHADER
+               def fragment()
+                 tex = texture(TEXTURE, UV)
+                 pulse = sin(TIME * speed) * pulse_scale + (1.0 - pulse_scale)
+                 COLOR = tex * tint * pulse
+               end
+             CR
+
            when "New Screen Space"
-             <<-CRSHADER
-             shader_type :canvas_item
-             render_mode :unshaded
+             set_sandbox_mode(SandboxMode::ScreenSpace)
+             <<-CR
+               shader_type :canvas_item
+               render_mode :unshaded
 
-             uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :linear
-             uniform vignette_intensity : Float32 = 0.8
+               require "std/math"
+               require "std/post_processing"
 
-             def fragment
-               color = texture(screen_texture, SCREEN_UV).rgb
-               dist = distance(SCREEN_UV, vec2(0.5, 0.5))
-               vignette = clamp(1.0 - dist * vignette_intensity, 0.0, 1.0)
-               COLOR = vec4(color * vignette, 1.0)
-             end
-             CRSHADER
+               uniform screen_tex : Sampler2D, hint: :screen_texture, filter: :linear
+               uniform vignette_radius : Float32 = 0.75, hint: range(0.1, 1.0, 0.05)
+               uniform vignette_softness : Float32 = 0.45, hint: range(0.05, 0.8, 0.05)
+
+               def fragment()
+                 col = texture(screen_tex, SCREEN_UV)
+                 vig = vignette(SCREEN_UV, vignette_radius, vignette_softness)
+                 COLOR = vec4(col.rgb * vig, 1.0)
+               end
+             CR
+
            when "New Compute"
-             <<-CRSHADER
-             shader_type :compute
-             local_size 8, 8, 1
+             set_sandbox_mode(SandboxMode::Compute)
+             <<-CR
+               shader_type :compute
 
-             image2d input_image, format: :rgba32f, set: 0, binding: 0
-             image2d output_image, format: :rgba32f, set: 0, binding: 1
+               local_size 8, 8, 1
 
-             uniform intensity : Float32 = 1.0
+               image2d output_image, format: :rgba32f, set: 0, binding: 0
 
-             def main
-               coord = ivec2(gl_GlobalInvocationID.xy)
-               pixel = imageLoad(input_image, coord)
-               imageStore(output_image, coord, pixel * intensity)
-             end
-             CRSHADER
+               def main()
+                 pos = ivec2(gl_GlobalInvocationID.xy)
+                 color = vec4(float(pos.x) / 512.0, float(pos.y) / 512.0, 0.5, 1.0)
+                 imageStore(output_image, pos, color)
+               end
+             CR
+
            else
              return
            end
 
     @current_sample_pristine = code
     @source_edit.try &.call("set_text", code)
-
-    case name
-    when "New 3D Spatial"      then set_sandbox_mode(SandboxMode::Spatial)
-    when "New 2D CanvasItem"   then set_sandbox_mode(SandboxMode::CanvasItem)
-    when "New Screen Space"    then set_sandbox_mode(SandboxMode::ScreenSpace)
-    when "New Compute"         then set_sandbox_mode(SandboxMode::Compute)
-    end
-
     compile_code
     set_status("Loaded template: #{name}", is_error: false)
   end
@@ -514,7 +549,6 @@ node CrShaderSandboxApp < Control do
     env = @world_env
     return unless env
 
-    # Set background styling on camera or environment
     case index
     when 0 # Dark Studio
       env.call("set_environment", env.call_obj("get_environment"))
@@ -542,34 +576,33 @@ node CrShaderSandboxApp < Control do
 
       apply_compiled_shader(target_code)
 
-      # Check for variable array uniforms (e.g. Color palettes or arrays)
+      # Dynamically synthesize parameter controls for all uniforms
       if program = compiler.last_program
-        array_uni = program.uniforms.find { |u| u.is_array? || u.name.includes?("palette") }
-        if array_uni
-          if container = @inspector_vbox
-            ctrl = @var_array_control
-            if ctrl.nil?
-              ctrl = CrShader::VariableArrayControl.new
-              ctrl.configure(array_uni.name, @active_material)
-              container.call("add_child", ctrl)
-              @var_array_control = ctrl
-            else
-              ctrl.configure(array_uni.name, @active_material)
-            end
+        if container = @inspector_vbox
+          inspector = @dynamic_inspector
+          if inspector.nil?
+            inspector = CrShader::DynamicUniformInspector.new
+            container.call("add_child", inspector)
+            @dynamic_inspector = inspector
           end
-        else
-          if ctrl = @var_array_control
-            ctrl.get_parent.try(&.call("remove_child", ctrl))
-            ctrl.call("queue_free")
-            @var_array_control = nil
-          end
+          inspector.configure(program, @active_material)
         end
       end
     rescue ex : CrShader::ShaderError
-      line_info = ex.line_number ? "line #{ex.line_number}: " : ""
-      set_status("✖ Compile Error #{line_info}#{ex.message}", is_error: true)
+      line_num = ex.line_number || 1
+      @last_error_line = line_num
+      set_status("✖ Line #{line_num}: #{ex.message} (Click to jump)", is_error: true)
+      jump_to_error(line_num)
     rescue ex
       set_status("✖ #{ex.message}", is_error: true)
+    end
+  end
+
+  def jump_to_error(line : Int32) : Void
+    if edit = @source_edit
+      edit.call("set_caret_line", Math.max(0, line - 1))
+      edit.call("set_caret_column", 0)
+      edit.call("center_viewport_to_caret")
     end
   end
 
@@ -595,16 +628,6 @@ node CrShaderSandboxApp < Control do
     end
   end
 
-  def update_uniform(name : String, value : Float32) : Void
-    if mat = @active_material
-      mat.call("set_shader_parameter", name, value.to_f64)
-      # Also update potential aliases
-      mat.call("set_shader_parameter", "wave_#{name}", value.to_f64)
-      mat.call("set_shader_parameter", "#{name}_intensity", value.to_f64)
-      mat.call("set_shader_parameter", "#{name}_speed", value.to_f64)
-    end
-  end
-
   private def set_status(msg : String, is_error : Bool = false) : Void
     if lbl = @status_label
       lbl.call("set_text", msg)
@@ -615,6 +638,15 @@ node CrShaderSandboxApp < Control do
 
   def _process(delta : Float64) : Void
     @time_elapsed += delta
+
+    # Debounced live recompile
+    if @auto_compile && @dirty
+      @debounce_time -= delta
+      if @debounce_time <= 0.0
+        @dirty = false
+        compile_code
+      end
+    end
 
     if @auto_rotate && (pivot = @pivot) && @current_mode == SandboxMode::Spatial
       pivot.call("rotate_y", (@rotation_speed * delta.to_f32).to_f64)

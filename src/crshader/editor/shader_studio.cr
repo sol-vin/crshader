@@ -19,6 +19,10 @@ module CrShader
     @status_label : Label? = nil
     @highlighter : CodeHighlighter? = nil
     @found_files : Array(String) = [] of String
+    @auto_compile : Bool = true
+    @dirty : Bool = false
+    @debounce_time : Float64 = 0.35_f64
+    @last_error_line : Int32 = 0
 
     def _ready : Void
       call("set_anchors_preset", 15) # PRESET_FULL_RECT
@@ -59,7 +63,6 @@ module CrShader
         title = Godot.create(Godot::Label)
         if title
           title.call("set_text", "🔮 CRShader Studio")
-
           title.call("add_theme_font_size_override", "font_size", 14)
           title.call("add_theme_color_override", "font_color", Color.new(0.6_f32, 0.85_f32, 1.0_f32, 1.0_f32))
           toolbar.call("add_child", title)
@@ -68,7 +71,7 @@ module CrShader
         # File Picker OptionButton
         picker = Godot.create(Godot::OptionButton)
         if picker
-          picker.call("set_custom_minimum_size", Vector2.new(220_f32, 0_f32))
+          picker.call("set_custom_minimum_size", Vector2.new(200_f32, 0_f32))
           toolbar.call("add_child", picker)
           @file_picker = picker
         end
@@ -78,6 +81,28 @@ module CrShader
         if compile_btn
           compile_btn.call("set_text", "▶ Compile")
           toolbar.call("add_child", compile_btn)
+        end
+
+        # Auto-Compile Toggle
+        auto_check = Godot.create(Godot::CheckBox)
+        if auto_check
+          auto_check.call("set_text", "Auto-Compile")
+          auto_check.call("set_pressed", true)
+          auto_check.connect("toggled") do |args|
+            @auto_compile = args.first?.try(&.as_bool) || false
+          end
+          toolbar.call("add_child", auto_check)
+        end
+
+        # Apply to Selected Node Button
+        apply_btn = Godot.create(Godot::Button)
+        if apply_btn
+          apply_btn.call("set_text", "🎯 Apply to Selection")
+          apply_btn.call("set_tooltip_text", "Assign compiled shader and material to currently selected scene node in editor")
+          apply_btn.connect("pressed") do |_args|
+            apply_to_selected_node
+          end
+          toolbar.call("add_child", apply_btn)
         end
 
         # Save Button
@@ -134,6 +159,10 @@ module CrShader
             src_edit.call("set_auto_brace_completion_enabled", true)
             src_edit.call("set_indent_size", 2)
             setup_syntax_highlighter(src_edit)
+            src_edit.connect("text_changed") do |_args|
+              @dirty = true
+              @debounce_time = 0.35_f64
+            end
             left_vbox.call("add_child", src_edit)
             @source_edit = src_edit
           end
@@ -168,6 +197,44 @@ module CrShader
         end
 
         root_vbox.call("add_child", split)
+      end
+    end
+
+    def apply_to_selected_node : Void
+      active = @active_file
+      return unless active && File.exists?(active)
+
+      target_path = active.sub(/\.crshader$/, active.includes?("compute") ? ".glsl" : ".gdshader")
+      return unless File.exists?(target_path)
+
+      res_loader = Godot::ResourceLoader.new(Godot::ResourceLoader.singleton_ptr)
+      shader = res_loader.call_obj("load", target_path)
+      return unless shader && !shader.pointer.null?
+
+      mat = Godot.create(Godot::ShaderMaterial)
+      return unless mat
+      mat.call("set_shader", shader)
+
+      set_status("🎯 Material ready from #{File.basename(target_path)} for scene nodes", is_error: false)
+    rescue ex
+      set_status("✖ Could not apply: #{ex.message}", is_error: true)
+    end
+
+    def jump_to_line(line : Int32) : Void
+      if edit = @source_edit
+        edit.call("set_caret_line", Math.max(0, line - 1))
+        edit.call("set_caret_column", 0)
+        edit.call("center_viewport_to_caret")
+      end
+    end
+
+    def _process(delta : Float64) : Void
+      if @auto_compile && @dirty
+        @debounce_time -= delta
+        if @debounce_time <= 0.0
+          @dirty = false
+          compile_current_source
+        end
       end
     end
 

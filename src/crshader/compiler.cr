@@ -3,6 +3,8 @@ require "./ast/types"
 require "./ast/shader_ast"
 require "./parser/dsl_parser"
 require "./parser/error_formatter"
+require "./validator/semantic_validator"
+require "./extensions/registry"
 require "./std/registry"
 require "./optimizer/tree_shaker"
 require "./optimizer/name_optimizer"
@@ -14,9 +16,15 @@ module CrShader
     property target_override : ShaderTarget? = nil
     property verbose : Bool = false
     property optimize_names : Bool = false
+    property skip_validation : Bool = false
     getter last_program : ShaderProgram? = nil
 
-    def initialize(@target_override : ShaderTarget? = nil, @verbose : Bool = false, @optimize_names : Bool = false)
+    def initialize(
+      @target_override : ShaderTarget? = nil,
+      @verbose : Bool = false,
+      @optimize_names : Bool = false,
+      @skip_validation : Bool = false
+    )
     end
 
     def compile_file(input_path : String, output_path : String? = nil) : String
@@ -41,6 +49,16 @@ module CrShader
       parser = DslParser.new(filename: filename)
       program = parser.parse(source)
       @last_program = program
+
+      # Extension AST transformations
+      Extensions.transform_program(program)
+
+      # Semantic validation pass (early error detection)
+      unless @skip_validation
+        validator = Validator::SemanticValidator.new(program, filename: filename, source_lines: parser.source_lines)
+        Extensions.validate(program, validator.context)
+        validator.validate!
+      end
 
       # Determine target
       target = @target_override || program.target

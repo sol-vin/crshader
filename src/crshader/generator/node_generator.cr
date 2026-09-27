@@ -72,7 +72,7 @@ module CrShader
       when NodeType::ScreenSpaceCanvas
         emit_screenspace_canvas_lifecycle(io, shader_path)
       when NodeType::CompositorEffect
-        emit_compositor_effect_lifecycle(io, shader_path)
+        emit_compositor_effect_lifecycle(io, shader_path, program)
       when NodeType::MaterialHost
         emit_material_host_lifecycle(io, shader_path)
       end
@@ -128,6 +128,10 @@ module CrShader
     end
 
     private def self.parse_property_type(u : UniformDecl) : Tuple(String, String)
+      if u.hints.includes?("source_color") || u.hints.includes?("hint_color")
+        return {"Color", "Color.new(1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32)"}
+      end
+
       case u.type_name.downcase
       when "float", "float32"
         def_v = u.default_value.try(&.to_s) || "0.0"
@@ -139,7 +143,13 @@ module CrShader
       when "bool"
         def_v = u.default_value.try(&.to_s) || "false"
         {"Bool", def_v}
-      when "color", "vec4"
+      when "color"
+        {"Color", "Color.new(1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32)"}
+      when "vec2"
+        {"Vector2", "Vector2.new(0.0_f32, 0.0_f32)"}
+      when "vec3"
+        {"Vector3", "Vector3.new(0.0_f32, 0.0_f32, 0.0_f32)"}
+      when "vec4"
         {"Color", "Color.new(1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32)"}
       when "texture2d", "sampler2d"
         {"Godot::Texture2D?", "nil"}
@@ -195,12 +205,26 @@ LIFECYCLE
 LIFECYCLE
     end
 
-    private def self.emit_compositor_effect_lifecycle(io : IO, shader_path : String) : Void
+    private def self.emit_compositor_effect_lifecycle(io : IO, shader_path : String, program : ShaderProgram? = nil) : Void
+      access_color = program && program.is_compositor ? program.compositor_access_color : true
+      access_depth = program && program.is_compositor ? program.compositor_access_depth : true
+      stage_num = if program && program.is_compositor
+                    case program.compositor_stage
+                    when "PostTransparent" then 4
+                    when "PostOpaque" then 1
+                    when "PreOpaque" then 0
+                    when "PostSky" then 2
+                    else 4
+                    end
+                  else
+                    4
+                  end
+
       io.puts <<-LIFECYCLE
     def _ready : Void
-      call("set_access_resolved_color", true)
-      call("set_access_resolved_depth", true)
-      call("set_effect_callback_type", 4)
+      call("set_access_resolved_color", #{access_color})
+      call("set_access_resolved_depth", #{access_depth})
+      call("set_effect_callback_type", #{stage_num})
     end
 LIFECYCLE
     end

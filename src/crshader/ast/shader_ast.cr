@@ -168,6 +168,10 @@ module CrShader
     property requires : Set(String) = Set(String).new
     property raw_top_level_nodes : Array(Crystal::ASTNode) = [] of Crystal::ASTNode
     property node_generations : Array(NodeGenerationTarget) = [] of NodeGenerationTarget
+    property is_compositor : Bool = false
+    property compositor_stage : String = "PostTransparent"
+    property compositor_access_color : Bool = true
+    property compositor_access_depth : Bool = false
 
     def initialize(@target : ShaderTarget = ShaderTarget::GDShader)
     end

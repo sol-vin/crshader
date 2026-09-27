@@ -1,0 +1,41 @@
+shader_type :canvas_item
+render_mode :unshaded
+
+require "std/math"
+require "std/glitch"
+require "std/post_processing"
+
+uniform screen_tex : Sampler2D, hint: :screen_texture, filter: :linear
+
+group "Tracking & Jitter"
+uniform tracking_jitter : Float32 = 0.015, hint: range(0.0, 0.1, 0.005)
+uniform tape_crease_speed : Float32 = 0.5, hint: range(0.1, 3.0, 0.1)
+
+group "Color Aberration"
+uniform rgb_shift : Float32 = 0.006, hint: range(0.0, 0.03, 0.001)
+uniform color_bleed : Float32 = 0.8, hint: range(0.0, 2.0, 0.1)
+
+group "Curvature & Tube"
+uniform tube_curvature : Float32 = 0.12, hint: range(0.0, 0.5, 0.02)
+uniform vignette_strength : Float32 = 0.35, hint: range(0.0, 1.0, 0.05)
+
+def fragment
+  uv = SCREEN_UV
+  uv = barrel_distortion(uv, tube_curvature)
+  
+  jittered_uv = scanline_jitter(uv, TIME, tracking_jitter)
+  
+  noise_bar_y = fract(TIME * tape_crease_speed)
+  dist_to_bar = abs(uv.y - noise_bar_y)
+  noise_factor = smoothstep(0.05, 0.0, dist_to_bar) * 0.15
+  jittered_uv.x = jittered_uv.x + noise_factor * rand(vec2(uv.y, TIME))
+  
+  col_r = texture(screen_tex, jittered_uv + vec2(rgb_shift, 0.0)).r
+  col_g = texture(screen_tex, jittered_uv).g
+  col_b = texture(screen_tex, jittered_uv - vec2(rgb_shift, 0.0)).b
+  
+  col = vec3(col_r, col_g, col_b)
+  vig = vignette(uv, 0.75, vignette_strength)
+  
+  COLOR = vec4(col * vig, 1.0)
+end

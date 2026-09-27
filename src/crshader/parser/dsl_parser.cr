@@ -4,6 +4,8 @@ require "../ast/types"
 require "../macros/macro_engine"
 require "./error_formatter"
 require "./tres_reader"
+require "../validator/rules"
+require "../extensions/registry"
 
 module CrShader
   class DslParser
@@ -32,13 +34,31 @@ module CrShader
       # Normalize empty untyped array literal [] to ([] of Void) to allow Crystal's parser to accept it
       normalized_source = normalized_source.gsub(/=\s*\[\s*\]/, "= ([] of Void)")
 
+      # Normalize property keyword to uniform call to bypass Crystal's built-in property macro limitation with named arguments
+      normalized_source = normalized_source.gsub(/\bproperty\s+([a-zA-Z_][a-zA-Z0-9_]*\s*:)/) do |_, regex_match|
+        "uniform #{regex_match[1]}"
+      end
+
+      # Normalize lowercase primitive types in genuine type annotations (uniform/export/field x : float, record x : float, func(x : float), etc.)
+      type_pattern = "(float|int|uint|bool|vec2|vec3|vec4|color|mat2|mat3|mat4|sampler2d|sampler_2d|sampler_cube|ivec2|ivec3|ivec4|uvec2|uvec3|uvec4)"
+      normalized_source = normalized_source.gsub(/\b(uniform|export|varying|field)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
+        "#{m[1]} #{m[2]} : #{TypeInfo.normalize(m[3])}"
+      end
+      normalized_source = normalized_source.gsub(/(^|\n|\brecord\b[^\n]*?,\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
+        "#{m[1]}#{m[2]} : #{TypeInfo.normalize(m[3])}"
+      end
+      normalized_source = normalized_source.gsub(/(\([^\)]*?\b[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
+        "#{m[1]} : #{TypeInfo.normalize(m[2])}"
+      end
+
       begin
         parser = Crystal::Parser.new(normalized_source)
         parser.filename = @filename
         ast = parser.parse
       rescue ex : Crystal::SyntaxException
+        line_content = normalized_source.lines[ex.line_number - 1]? || ""
         raise ShaderError.new(
-          ex.message || "Syntax error",
+          "#{ex.message} (at line #{ex.line_number}:#{ex.column_number}: `#{line_content}`)",
           filename: @filename,
           line_number: ex.line_number,
           column_number: ex.column_number
@@ -89,6 +109,18 @@ module CrShader
             if st == ShaderType::Compute
               @program.target = ShaderTarget::GLSL
             end
+          else
+            valid_types = ["spatial", "canvas_item", "particles", "sky", "fog", "compute"]
+            closest = Validator::Rules.find_closest_match(val, valid_types)
+            tip_msg = closest ? "Did you mean ':#{closest}'?" : "Valid types are: :spatial, :canvas_item, :particles, :sky, :fog, :compute."
+            loc = node.location
+            raise ShaderError.new(
+              "Unknown shader_type ':#{val}'.",
+              filename: @filename,
+              line_number: loc.try(&.line_number),
+              column_number: loc.try(&.column_number),
+              tip: tip_msg
+            )
           end
         end
 
@@ -97,7 +129,13 @@ module CrShader
 
       when "render_mode"
         node.args.each do |arg|
-          @program.render_modes << node_to_string_or_sym(arg)
+          if arg.is_a?(Crystal::ArrayLiteral)
+            arg.elements.each do |el|
+              @program.render_modes << node_to_string_or_sym(el)
+            end
+          else
+            @program.render_modes << node_to_string_or_sym(arg)
+          end
         end
 
       when "setup_gdshader"
@@ -111,13 +149,40 @@ module CrShader
 
       when "group", "uniform_group"
         if arg = node.args.first?
-          @current_group = node_to_string_or_sym(arg)
-          @current_subgroup = nil
+          name = node_to_string_or_sym(arg)
+          if block = node.block
+            prev_group = @current_group
+            prev_subgroup = @current_subgroup
+            @current_group = name
+            @current_subgroup = nil
+            if block.body.is_a?(Crystal::Expressions)
+              block.body.as(Crystal::Expressions).expressions.each { |child| process_top_level_node(child) }
+            else
+              process_top_level_node(block.body)
+            end
+            @current_group = prev_group
+            @current_subgroup = prev_subgroup
+          else
+            @current_group = name
+            @current_subgroup = nil
+          end
         end
 
       when "subgroup", "uniform_subgroup"
         if arg = node.args.first?
-          @current_subgroup = node_to_string_or_sym(arg)
+          name = node_to_string_or_sym(arg)
+          if block = node.block
+            prev_subgroup = @current_subgroup
+            @current_subgroup = name
+            if block.body.is_a?(Crystal::Expressions)
+              block.body.as(Crystal::Expressions).expressions.each { |child| process_top_level_node(child) }
+            else
+              process_top_level_node(block.body)
+            end
+            @current_subgroup = prev_subgroup
+          else
+            @current_subgroup = name
+          end
         end
 
       when "generate_node", "node_generator", "export_node"
@@ -126,7 +191,7 @@ module CrShader
         out_path = node.args[2]?.try { |a| node_to_string_or_sym(a) }
         @program.node_generations << NodeGenerationTarget.new(type_str, name_str, out_path)
 
-      when "uniform"
+      when "uniform", "property", "export"
         process_uniform_call(node, qualifier: UniformQualifier::Default)
 
       when "instance_uniform"
@@ -134,6 +199,36 @@ module CrShader
 
       when "global_uniform"
         process_uniform_call(node, qualifier: UniformQualifier::Global)
+
+      when "sampler"
+        process_sampler_call(node)
+
+      when "record"
+        process_record_call(node)
+
+      when "stage"
+        process_stage_call(node)
+
+      when "compositor_effect", "compositor_pass"
+        process_compositor_effect_call(node)
+
+      when "compute_kernel"
+        process_compute_kernel_call(node)
+
+      when "storage_buffer"
+        process_buffer_call(node)
+
+      when "storage_image"
+        process_image_call(node)
+
+      when "push_constants"
+        process_push_constant_call(node)
+
+      when "kernel_1d"
+        process_kernel_1d_call(node)
+
+      when "kernel_2d"
+        process_kernel_2d_call(node)
 
       when "varying"
         process_varying_call(node)
@@ -164,6 +259,9 @@ module CrShader
         end
 
       else
+        if CrShader::Extensions.handle_directive(node.name, node, self)
+          return
+        end
         # Could be a top-level helper call or raw statement
         @program.raw_top_level_nodes << node
       end
@@ -400,8 +498,32 @@ module CrShader
             array_size ||= "16"
             type_name = "Color" if type_name == "Float32" || type_name.empty?
           end
+        when "range"
+          if narg.value.is_a?(Crystal::RangeLiteral)
+            range_lit = narg.value.as(Crystal::RangeLiteral)
+            min_v = range_lit.from.to_s
+            max_v = range_lit.to.to_s
+            step_v = node.named_args.try(&.find { |a| a.name == "step" }).try(&.value.to_s)
+            if step_v
+              hints << "hint_range(#{min_v}, #{max_v}, #{step_v})"
+            else
+              hints << "hint_range(#{min_v}, #{max_v})"
+            end
+          end
+        when "step"
+          # Handled with range
         when "hint"
-          if narg.value.is_a?(Crystal::ArrayLiteral)
+          if narg.value.is_a?(Crystal::RangeLiteral)
+            range_lit = narg.value.as(Crystal::RangeLiteral)
+            min_v = range_lit.from.to_s
+            max_v = range_lit.to.to_s
+            step_v = node.named_args.try(&.find { |a| a.name == "step" }).try(&.value.to_s)
+            if step_v
+              hints << "hint_range(#{min_v}, #{max_v}, #{step_v})"
+            else
+              hints << "hint_range(#{min_v}, #{max_v})"
+            end
+          elsif narg.value.is_a?(Crystal::ArrayLiteral)
             narg.value.as(Crystal::ArrayLiteral).elements.each do |el|
               hints << normalize_hint(node_to_hint_string(el))
             end
@@ -414,13 +536,19 @@ module CrShader
           array_size = narg.value.to_s
           is_var_array = true
         when "type"
-          type_name = narg.value.to_s
+          type_name = TypeInfo.normalize(narg.value.to_s)
         else
           hints << normalize_hint(node_to_hint_string(narg.value))
         end
       end
 
       return if name.empty?
+
+      if default_val.is_a?(Crystal::Call) && (hex_ast = parse_hex_color_to_ast(default_val.as(Crystal::Call)))
+        default_val = hex_ast
+      end
+
+      type_name = TypeInfo.normalize(type_name)
 
       @program.uniforms << UniformDecl.new(
         name: name,
@@ -545,8 +673,9 @@ module CrShader
 
     private def process_buffer_call(node : Crystal::Call)
       # buffer MyBuffer, set: 0, binding: 0, std: :std430, restrict: true do ... end
-      name = node.args.first?.try(&.to_s) || "Buffer"
-      instance_name = name.underscore
+      raw_name = node.args.first?.try { |a| node_to_string_or_sym(a) } || "Buffer"
+      name = raw_name.camelcase
+      instance_name = raw_name.underscore
       set = 0
       binding = 0
       std = "std430"
@@ -582,8 +711,9 @@ module CrShader
     end
 
     private def process_push_constant_call(node : Crystal::Call)
-      name = node.args.first?.try(&.to_s) || "PushConstants"
-      instance_name = name.underscore
+      raw_name = node.args.first?.try { |a| node_to_string_or_sym(a) } || "PushConstants"
+      name = raw_name.camelcase
+      instance_name = raw_name.underscore
 
       node.named_args.try &.each do |narg|
         case narg.name
@@ -702,9 +832,11 @@ module CrShader
       when Crystal::SymbolLiteral, Crystal::StringLiteral
         node.value
       when Crystal::Call
-        # e.g. hint_range(0.0, 1.0)
+        hname = node.name
+        hname = "hint_range" if hname == "range"
+        hname = "hint_enum" if hname == "enum"
         args_str = node.args.map { |a| node_to_string_or_sym(a) }.join(", ")
-        "#{node.name}(#{args_str})"
+        "#{hname}(#{args_str})"
       else
         node.to_s
       end
@@ -717,11 +849,263 @@ module CrShader
            "roughness_r", "roughness_g", "roughness_b", "roughness_a",
            "roughness_normal", "anisotropy", "normal"
         "hint_#{raw_hint}"
+      when "color", "source_color"
+        "source_color"
       when /^hint_/
         raw_hint
       else
         raw_hint
       end
+    end
+    private def parse_hex_color_to_ast(call : Crystal::Call) : Crystal::ASTNode?
+      return nil unless (call.name == "hex" || call.name == "from_hex")
+      arg = call.args.first?
+      return nil unless arg
+
+      hex_str = case arg
+                when Crystal::StringLiteral then arg.value.strip
+                when Crystal::NumberLiteral then arg.value.sub(/^0x/i, "")
+                else return nil
+                end
+
+      clean_hex = hex_str.sub(/^#/, "")
+      if clean_hex.size == 6
+        r = (clean_hex[0..1].to_i(16) / 255.0_f32).round(4)
+        g = (clean_hex[2..3].to_i(16) / 255.0_f32).round(4)
+        b = (clean_hex[4..5].to_i(16) / 255.0_f32).round(4)
+        Crystal::Parser.new("Color.new(#{r}, #{g}, #{b}, 1.0)").parse
+      elsif clean_hex.size == 8
+        r = (clean_hex[0..1].to_i(16) / 255.0_f32).round(4)
+        g = (clean_hex[2..3].to_i(16) / 255.0_f32).round(4)
+        b = (clean_hex[4..5].to_i(16) / 255.0_f32).round(4)
+        a = (clean_hex[6..7].to_i(16) / 255.0_f32).round(4)
+        Crystal::Parser.new("Color.new(#{r}, #{g}, #{b}, #{a})").parse
+      else
+        nil
+      end
+    rescue
+      nil
+    end
+
+    private def process_sampler_call(node : Crystal::Call)
+      return unless (first_arg = node.args.first?)
+      name = node_to_string_or_sym(first_arg)
+      hints = [] of String
+
+      node.named_args.try &.each do |narg|
+        case narg.name
+        when "filter", "repeat"
+          hints << "#{narg.name}_#{node_to_string_or_sym(narg.value)}"
+        when "hint"
+          hints << normalize_hint(node_to_hint_string(narg.value))
+        end
+      end
+
+      @program.uniforms << UniformDecl.new(
+        name: name,
+        type_name: "Sampler2D",
+        hints: hints,
+        group: @current_group,
+        subgroup: @current_subgroup
+      )
+    end
+
+    private def process_record_call(node : Crystal::Call)
+      return if node.args.empty?
+      struct_name = node_to_string_or_sym(node.args[0])
+      fields = [] of StructField
+      node.args[1..-1].each do |arg|
+        if arg.is_a?(Crystal::TypeDeclaration)
+          f_name = arg.var.to_s
+          f_type = TypeInfo.normalize(arg.declared_type.to_s)
+          fields << StructField.new(f_name, f_type)
+        end
+      end
+      node.named_args.try &.each do |narg|
+        f_name = narg.name
+        f_type = TypeInfo.normalize(narg.value.to_s)
+        fields << StructField.new(f_name, f_type)
+      end
+      @program.structs[struct_name] = StructDecl.new(struct_name, fields)
+    end
+
+    private def process_stage_call(node : Crystal::Call)
+      return unless (first_arg = node.args.first?) && (block = node.block)
+      stage_name = node_to_string_or_sym(first_arg)
+      @program.functions[stage_name] = Crystal::Def.new(stage_name, body: block.body)
+    end
+
+    private def process_compositor_effect_call(node : Crystal::Call)
+      @program.shader_type = ShaderType::Compute
+      @program.target = ShaderTarget::GLSL
+      @program.is_compositor = true
+      @program.compute_layout = ComputeLayout.new(8, 8, 1)
+
+      stage_name = node.args.first?.try { |a| node_to_string_or_sym(a) } || "post_transparent"
+      @program.compositor_stage = case stage_name.downcase
+                                  when "post_transparent" then "PostTransparent"
+                                  when "post_opaque" then "PostOpaque"
+                                  when "pre_opaque" then "PreOpaque"
+                                  when "post_sky" then "PostSky"
+                                  else "PostTransparent"
+                                  end
+
+      if block = node.block
+        process_compositor_block(block.body)
+      end
+    end
+
+    private def process_compositor_block(node : Crystal::ASTNode)
+      if node.is_a?(Crystal::Expressions)
+        node.expressions.each { |child| process_compositor_block(child) }
+        return
+      end
+
+      case node
+      when Crystal::Call
+        case node.name
+        when "access"
+          node.args.each do |arg|
+            sym = node_to_string_or_sym(arg).downcase
+            @program.compositor_access_color = true if sym == "color"
+            @program.compositor_access_depth = true if sym == "depth"
+          end
+        when "process_pixel"
+          process_pixel_block(node)
+        else
+          process_top_level_node(node)
+        end
+      else
+        process_top_level_node(node)
+      end
+    end
+
+    private def process_pixel_block(node : Crystal::Call)
+      return unless (block = node.block)
+
+      has_color = @program.images.any? { |img| img.name == "color_image" }
+      unless has_color
+        @program.images << ImageUniformDecl.new("color_image", "image2D", "rgba32f", set: 0, binding: 0)
+      end
+
+      if @program.compositor_access_depth
+        has_depth = @program.images.any? { |img| img.name == "depth_image" }
+        unless has_depth
+          @program.images << ImageUniformDecl.new("depth_image", "image2D", "r32f", set: 0, binding: 1)
+        end
+      end
+
+      coord_var = block.args[0]?.try(&.name) || "coord"
+      color_var = block.args[1]?.try(&.name) || "color"
+
+      main_code = <<-CR
+        def main
+          #{coord_var} = ivec2(gl_GlobalInvocationID.xy)
+          size = imageSize(color_image)
+          if #{coord_var}.x >= size.x || #{coord_var}.y >= size.y
+            return
+          end
+          #{color_var} = imageLoad(color_image, #{coord_var})
+        end
+      CR
+
+      parsed_def = Crystal::Parser.new(main_code).parse.as(Crystal::Def)
+      main_body_exprs = parsed_def.body.as(Crystal::Expressions).expressions
+
+      if block.body.is_a?(Crystal::Expressions)
+        main_body_exprs.concat(block.body.as(Crystal::Expressions).expressions)
+      else
+        main_body_exprs << block.body
+      end
+
+      store_call = Crystal::Call.new(
+        nil,
+        "imageStore",
+        [
+          Crystal::Var.new("color_image").as(Crystal::ASTNode),
+          Crystal::Var.new(coord_var).as(Crystal::ASTNode),
+          Crystal::Var.new(color_var).as(Crystal::ASTNode)
+        ]
+      )
+      main_body_exprs << store_call
+
+      parsed_def.body = Crystal::Expressions.new(main_body_exprs)
+      @program.functions["main"] = parsed_def
+    end
+
+    private def process_compute_kernel_call(node : Crystal::Call)
+      @program.shader_type = ShaderType::Compute
+      @program.target = ShaderTarget::GLSL
+
+      x = node.args[0]?.try(&.to_s.to_i?) || 8
+      y = node.args[1]?.try(&.to_s.to_i?) || 8
+      z = node.args[2]?.try(&.to_s.to_i?) || 1
+      @program.compute_layout = ComputeLayout.new(x, y, z)
+
+      if block = node.block
+        if block.body.is_a?(Crystal::Expressions)
+          block.body.as(Crystal::Expressions).expressions.each { |child| process_top_level_node(child) }
+        else
+          process_top_level_node(block.body)
+        end
+      end
+    end
+
+    private def process_kernel_1d_call(node : Crystal::Call)
+      return unless (block = node.block)
+      bound_var = node.args.first?.try { |a| node_to_string_or_sym(a) } || "count"
+      idx_var = block.args.first?.try(&.name) || "idx"
+
+      kernel_code = <<-CR
+        def main
+          #{idx_var} = gl_GlobalInvocationID.x
+          if #{idx_var} >= #{bound_var}
+            return
+          end
+        end
+      CR
+
+      parsed_def = Crystal::Parser.new(kernel_code).parse.as(Crystal::Def)
+      main_body_exprs = parsed_def.body.as(Crystal::Expressions).expressions
+      if block.body.is_a?(Crystal::Expressions)
+        main_body_exprs.concat(block.body.as(Crystal::Expressions).expressions)
+      else
+        main_body_exprs << block.body
+      end
+      parsed_def.body = Crystal::Expressions.new(main_body_exprs)
+      @program.functions["main"] = parsed_def
+    end
+
+    private def process_kernel_2d_call(node : Crystal::Call)
+      return unless (block = node.block)
+      bound_target = node.args.first?.try { |a| node_to_string_or_sym(a) } || "image"
+      coord_var = block.args.first?.try(&.name) || "coord"
+
+      size_calc = if @program.images.any? { |img| img.name == bound_target }
+                    "imageSize(#{bound_target})"
+                  else
+                    bound_target
+                  end
+
+      kernel_code = <<-CR
+        def main
+          #{coord_var} = ivec2(gl_GlobalInvocationID.xy)
+          __size = #{size_calc}
+          if #{coord_var}.x >= __size.x || #{coord_var}.y >= __size.y
+            return
+          end
+        end
+      CR
+
+      parsed_def = Crystal::Parser.new(kernel_code).parse.as(Crystal::Def)
+      main_body_exprs = parsed_def.body.as(Crystal::Expressions).expressions
+      if block.body.is_a?(Crystal::Expressions)
+        main_body_exprs.concat(block.body.as(Crystal::Expressions).expressions)
+      else
+        main_body_exprs << block.body
+      end
+      parsed_def.body = Crystal::Expressions.new(main_body_exprs)
+      @program.functions["main"] = parsed_def
     end
   end
 end

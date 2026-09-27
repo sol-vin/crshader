@@ -1,0 +1,44 @@
+shader_type :spatial
+render_mode :cull_back, :diffuse_toon, :specular_toon
+
+require "std/math"
+require "std/lighting"
+
+group "Base Material"
+uniform base_color : Color = Color.new(0.85, 0.45, 0.65, 1.0), hint: :source_color
+uniform shadow_tint : Color = Color.new(0.35, 0.25, 0.5, 1.0), hint: :source_color
+uniform roughness_val : Float32 = 0.4, hint: range(0.0, 1.0, 0.05)
+
+group "Toon Ramping"
+uniform diffuse_steps : Float32 = 3.0, hint: range(1.0, 5.0, 1.0)
+uniform shadow_threshold : Float32 = 0.45, hint: range(0.0, 1.0, 0.05)
+uniform shadow_softness : Float32 = 0.08, hint: range(0.01, 0.5, 0.01)
+
+group "Specular & Rim"
+uniform specular_size : Float32 = 0.15, hint: range(0.01, 0.5, 0.01)
+uniform specular_gloss : Float32 = 32.0, hint: range(4.0, 64.0, 2.0)
+uniform rim_power : Float32 = 3.0, hint: range(0.5, 8.0, 0.5)
+uniform rim_color : Color = Color.new(1.0, 0.95, 0.8, 1.0), hint: :source_color
+
+def fragment
+  view_dir = normalize(VIEW)
+  fresnel_term = fresnel(rim_power, NORMAL, view_dir)
+  
+  ALBEDO = base_color.rgb + rim_color.rgb * fresnel_term * 0.5
+  ROUGHNESS = roughness_val
+  SPECULAR = 0.2
+end
+
+def light
+  n_dot_l = dot(NORMAL, LIGHT)
+  ramp = smoothstep(shadow_threshold - shadow_softness, shadow_threshold + shadow_softness, n_dot_l)
+  stepped_ramp = cel_shade(ramp, diffuse_steps)
+  
+  diffuse_col = mix(shadow_tint.rgb, LIGHT_COLOR, stepped_ramp)
+  
+  spec = blinn_phong(NORMAL, LIGHT, VIEW, specular_gloss)
+  spec_stepped = step(1.0 - specular_size, spec)
+  
+  DIFFUSE_LIGHT = diffuse_col * ATTENUATION
+  SPECULAR_LIGHT = spec_stepped * LIGHT_COLOR * ATTENUATION
+end

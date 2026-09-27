@@ -171,6 +171,132 @@ module CrShader
         watcher = FileWatcher.new(compiler, target_override: target_override)
         watcher.watch(target_path, output_path)
 
+      when "check", "lint"
+        sub_args = args[1..-1]
+        if sub_args.empty?
+          STDERR.puts "Error: specify .crshader file to check. Usage: crshader check <file.crshader>"
+          exit 1
+        end
+        target_file = sub_args.first
+        unless File.exists?(target_file)
+          STDERR.puts "Error: file not found: #{target_file}"
+          exit 1
+        end
+        compiler = Compiler.new
+        begin
+          compiler.compile_source(File.read(target_file), filename: target_file)
+          puts "✔ Syntax & schema valid: #{target_file}"
+        rescue ex : ShaderError
+          STDERR.puts ex.formatted_message(File.read(target_file).lines)
+          exit 1
+        rescue ex
+          STDERR.puts "Error: #{ex.message}"
+          exit 1
+        end
+        return
+
+      when "inspect"
+        sub_args = args[1..-1]
+        if sub_args.empty?
+          STDERR.puts "Error: specify .crshader file to inspect. Usage: crshader inspect <file.crshader>"
+          exit 1
+        end
+        target_file = sub_args.first
+        unless File.exists?(target_file)
+          STDERR.puts "Error: file not found: #{target_file}"
+          exit 1
+        end
+        parser = DslParser.new(filename: target_file)
+        program = parser.parse(File.read(target_file))
+        puts "Shader: #{target_file}"
+        puts "Type: #{program.shader_type} (Target: #{program.target})"
+        puts "Uniforms (#{program.uniforms.size}):"
+        program.uniforms.each do |u|
+          hints_str = u.hints.empty? ? "" : " [#{u.hints.join(", ")}]"
+          grp_str = u.group ? " (Group: #{u.group})" : ""
+          puts "  - #{u.name} : #{u.type_name}#{hints_str}#{grp_str}"
+        end
+        puts "Stages:"
+        program.functions.each_key do |f|
+          puts "  - #{f}" if ["vertex", "fragment", "light", "main", "start", "process", "sky", "fog"].includes?(f)
+        end
+        return
+
+      when "new"
+        sub_args = args[1..-1]
+        tmpl = "spatial"
+        new_out_file : String? = nil
+        OptionParser.parse(sub_args) do |opts|
+          opts.banner = "Usage: crshader new <output.crshader> [options]"
+          opts.on("-t TYPE", "--template TYPE", "Template type: spatial, canvas, postprocess, or compute (default: spatial)") { |t| tmpl = t }
+          opts.unknown_args { |unknown| new_out_file = unknown.first? }
+        end
+        unless new_out_file
+          STDERR.puts "Error: specify output file name. Usage: crshader new <filename.crshader>"
+          exit 1
+        end
+        content = case tmpl.downcase
+                  when "canvas", "canvas_item", "2d"
+                    <<-CR
+                      shader_type :canvas_item
+                      render_mode :unshaded
+
+                      uniform tint : Color = Color.new(1.0, 1.0, 1.0, 1.0), hint: :source_color
+
+                      def fragment
+                        COLOR = texture(TEXTURE, UV) * tint
+                      end
+                    CR
+                  when "postprocess", "post_process", "screen"
+                    <<-CR
+                      shader_type :canvas_item
+                      render_mode :unshaded
+
+                      require "std/post_processing"
+
+                      uniform screen_tex : Sampler2D, hint: :screen_texture, filter: :linear
+                      uniform vignette_radius : Float32 = 0.75, hint: range(0.1, 1.0, 0.05)
+
+                      def fragment
+                        col = texture(screen_tex, SCREEN_UV)
+                        vig = vignette(SCREEN_UV, vignette_radius, 0.4)
+                        COLOR = vec4(col.rgb * vig, 1.0)
+                      end
+                    CR
+                  when "compute"
+                    <<-CR
+                      shader_type :compute
+
+                      local_size 8, 8, 1
+
+                      image2d output_image, format: :rgba32f, set: 0, binding: 0
+
+                      def main
+                        pos = ivec2(gl_GlobalInvocationID.xy)
+                        color = vec4(float(pos.x) / 512.0, float(pos.y) / 512.0, 0.5, 1.0)
+                        imageStore(output_image, pos, color)
+                      end
+                    CR
+                  else
+                    <<-CR
+                      shader_type :spatial
+                      render_mode :cull_back, :diffuse_lambert
+
+                      uniform albedo : Color = Color.new(0.2, 0.6, 0.95, 1.0), hint: :source_color
+                      uniform roughness : Float32 = 0.3, hint: range(0.0, 1.0, 0.05)
+                      uniform metallic : Float32 = 0.1, hint: range(0.0, 1.0, 0.05)
+
+                      def fragment
+                        ALBEDO = albedo.rgb
+                        ROUGHNESS = roughness
+                        METALLIC = metallic
+                      end
+                    CR
+                  end
+        File.write(new_out_file.not_nil!, content.strip + "\n")
+        puts "Created new #{tmpl} shader -> #{new_out_file}"
+        return
+
       else
         # If first argument is a file ending in .crshader, treat as build
         if command.ends_with?(".crshader")
@@ -215,6 +341,9 @@ CRSHADER: Crystal DSL & Transpiler for Godot GDShader and GLSL Compute
 
 Usage:
   crshader build <file.crshader> [-o output] [--target gdshader|glsl] [-O]
+  crshader check <file.crshader>
+  crshader inspect <file.crshader>
+  crshader new <file.crshader> [-t spatial|canvas|postprocess|compute]
   crshader generate-node <file.crshader> [-t mesh3d|canvas2d|compositor] [-o output.cr]
   crshader watch <path> [-o output_dir] [--target gdshader|glsl]
   crshader stubs [-o output_path]
@@ -223,16 +352,18 @@ Usage:
   crshader --help
 
 Examples:
+  crshader check examples/stylized_toon_pbr.crshader
+  crshader inspect examples/water_caustics_ocean.crshader
+  crshader new my_water.crshader -t spatial
   crshader build player.crshader
   crshader build compute.crshader --target glsl
   crshader generate-node effect.crshader -t compositor -o src/effect_node.cr
   crshader watch shaders/
-  crshader stubs -o src/libgodot/crshader.cr
-  crshader install-addon my_godot_project/
 HELP
     end
   end
 end
 
-CrShader::CLI.run
-
+if PROGRAM_NAME.ends_with?("crshader.cr")
+  CrShader::CLI.run
+end

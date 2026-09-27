@@ -705,8 +705,11 @@ module CrShader
 
       # Barrier and synchronization builtins for compute
       case name
-      when "barrier"
+      when "barrier", "barrier_execution"
         @io << "barrier()"
+        return
+      when "barrier_memory", "memory_barrier"
+        @io << "memoryBarrier()"
         return
       when "group_memory_barrier"
         @io << "groupMemoryBarrier()"
@@ -714,8 +717,11 @@ module CrShader
       when "memory_barrier_shared"
         @io << "memoryBarrierShared()"
         return
-      when "memory_barrier_buffer"
+      when "barrier_buffer", "memory_barrier_buffer"
         @io << "memoryBarrierBuffer()"
+        return
+      when "barrier_image", "memory_barrier_image"
+        @io << "memoryBarrierImage()"
         return
       end
 
