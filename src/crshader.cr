@@ -185,5 +185,3 @@ HELP
   end
 end
 
-CRShader = CrShader
-

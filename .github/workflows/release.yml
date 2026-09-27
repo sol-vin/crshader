@@ -597,7 +597,8 @@ jobs:
               cp -r addons/* "$STAGE_DIR/addons/"
             fi
             rm -rf "$STAGE_DIR/.godot"
-            (cd "$STAGE_DIR" && zip -r "../../dist/example-viewer-linux.zip" ./*)
+            ROOT_DIR=$(pwd)
+            (cd "$STAGE_DIR" && zip -r "$ROOT_DIR/dist/example-viewer-linux.zip" ./*)
             rm -rf "$STAGE_DIR"
           fi
       - name: Upload Consumer Packages Artifact (Linux)
@@ -637,7 +638,8 @@ jobs:
               cp -r addons/* "$STAGE_DIR/addons/"
             fi
             rm -rf "$STAGE_DIR/.godot"
-            (cd "$STAGE_DIR" && zip -r "../../dist/example-viewer-macos.zip" ./*)
+            ROOT_DIR=$(pwd)
+            (cd "$STAGE_DIR" && zip -r "$ROOT_DIR/dist/example-viewer-macos.zip" ./*)
             rm -rf "$STAGE_DIR"
           fi
       - name: Upload Consumer Packages Artifact (macOS)
