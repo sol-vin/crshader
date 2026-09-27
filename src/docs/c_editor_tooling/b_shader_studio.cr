@@ -67,8 +67,7 @@ module CrShader
         # +-----------------------------------------------------------------------+
         # ```
         #
-        def self.topic_01_dock_layout : Nil
-        end
+        def self.topic_01_dock_layout : Nil; end
 
         # **Real-Time Recompilation & Diagnostics**: Sub-millisecond compilation triggers on keystroke with syntax error reporting.
         #
@@ -77,8 +76,7 @@ module CrShader
         # or an undeclared identifier), the diagnostic console highlights the offending line with a red
         # marker and exact column error description.
         #
-        def self.topic_02_live_recompilation : Nil
-        end
+        def self.topic_02_live_recompilation : Nil; end
       end
     end
   end

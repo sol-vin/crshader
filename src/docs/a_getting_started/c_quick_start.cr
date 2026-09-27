@@ -71,8 +71,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_01_first_canvas_shader : Nil
-        end
+        def self.topic_01_first_canvas_shader : Nil; end
 
         # **Assigning Directly to a ShaderMaterial**: Hooking up the .crshader resource in the Godot Inspector without manual export.
         #
@@ -83,8 +82,7 @@ module CrShader
         # 5. The sprite immediately updates in the editor viewport!
         # 6. Expand **Shader Parameters** to see your declared `tint`, `speed`, and `frequency` uniforms ready for adjustment.
         #
-        def self.topic_02_assigning_to_material : Nil
-        end
+        def self.topic_02_assigning_to_material : Nil; end
 
         # **Inspecting Transpiled Output in CRShader Studio**: Opening the dock to inspect generated GDShader code and verify syntax.
         #
@@ -106,8 +104,7 @@ module CrShader
         # }
         # ```
         #
-        def self.topic_03_inspecting_output : Nil
-        end
+        def self.topic_03_inspecting_output : Nil; end
       end
     end
   end

@@ -66,8 +66,7 @@ module CrShader
         # shader_type :compute
         # ```
         #
-        def self.topic_01_shader_types : Nil
-        end
+        def self.topic_01_shader_types : Nil; end
 
         # **Render Modes & Pipeline Flags**: Configuring pipeline flags such as unshaded, blend modes, depth draw, and culling.
         #
@@ -87,8 +86,7 @@ module CrShader
         # render_mode :unshaded, :cull_disabled, :depth_draw_always
         # ```
         #
-        def self.topic_02_render_modes : Nil
-        end
+        def self.topic_02_render_modes : Nil; end
       end
     end
   end

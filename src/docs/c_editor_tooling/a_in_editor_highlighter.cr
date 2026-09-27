@@ -65,8 +65,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_01_highlighter_architecture : Nil
-        end
+        def self.topic_01_highlighter_architecture : Nil; end
 
         # **Highlighted Token Categories**: Color mappings for language constructs, types, and stage declarations.
         #
@@ -78,8 +77,7 @@ module CrShader
         # - **Numbers & Constants**: Floats (`1.5`, `0.1_f32`), hex literals, and boolean literals (`true`, `false`).
         # - **Comments**: Full-line or trailing `# comments` are highlighted with editor comment styling.
         #
-        def self.topic_02_token_categories : Nil
-        end
+        def self.topic_02_token_categories : Nil; end
       end
     end
   end

@@ -57,8 +57,7 @@ module CrShader
         # make viewer
         # ```
         #
-        def self.topic_01_shader_viewer : Nil
-        end
+        def self.topic_01_shader_viewer : Nil; end
 
         # **Split-Screen Live Shader Sandbox**: Live in-game shader authoring environment with real-time viewport feedback.
         #
@@ -74,8 +73,7 @@ module CrShader
         # make sandbox
         # ```
         #
-        def self.topic_02_live_sandbox : Nil
-        end
+        def self.topic_02_live_sandbox : Nil; end
       end
     end
   end

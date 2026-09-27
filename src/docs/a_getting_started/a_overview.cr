@@ -89,8 +89,7 @@ module CrShader
         # - **Q: Does CRShader introduce runtime overhead when running the game?**
         #   A: Zero overhead. Shaders are compiled to standard Godot Shader resources in-memory at load time. The GPU executes native driver bytecode identical to hand-written GDShader.
         #
-        def self.topic_01_architecture_overview : Nil
-        end
+        def self.topic_01_architecture_overview : Nil; end
 
         # **Transparent In-Memory Loading**: How ResourceFormatLoaderCRShader registers with Godot's ResourceLoader to bypass intermediate disk files.
         #
@@ -119,8 +118,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_02_transparent_loading : Nil
-        end
+        def self.topic_02_transparent_loading : Nil; end
       end
     end
   end

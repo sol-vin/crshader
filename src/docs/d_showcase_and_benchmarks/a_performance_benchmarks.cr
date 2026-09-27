@@ -81,8 +81,7 @@ module CrShader
         #   </tbody>
         # </table>
         #
-        def self.topic_01_throughput_metrics : Nil
-        end
+        def self.topic_01_throughput_metrics : Nil; end
 
         # **Running Compiler Benchmarks**: Commands to run local benchmark sweeps and inspect latency statistics.
         #
@@ -98,8 +97,7 @@ module CrShader
         # crystal run benchmarks/compiler_bench.cr --release
         # ```
         #
-        def self.topic_02_running_benchmarks : Nil
-        end
+        def self.topic_02_running_benchmarks : Nil; end
       end
     end
   end

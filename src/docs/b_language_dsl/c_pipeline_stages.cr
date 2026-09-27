@@ -71,8 +71,7 @@ module CrShader
         # }
         # ```
         #
-        def self.topic_01_vertex_stage : Nil
-        end
+        def self.topic_01_vertex_stage : Nil; end
 
         # **Pixel / Fragment Shading (stage :fragment)**: Computing per-pixel color, roughness, metallic, normal mapping, and alpha discard.
         #
@@ -98,8 +97,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_02_fragment_stage : Nil
-        end
+        def self.topic_02_fragment_stage : Nil; end
 
         # **Custom Lighting Models (stage :light)**: Overriding standard PBR lighting with toon/cel shading or custom BRDFs.
         #
@@ -116,8 +114,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_03_light_stage : Nil
-        end
+        def self.topic_03_light_stage : Nil; end
       end
     end
   end

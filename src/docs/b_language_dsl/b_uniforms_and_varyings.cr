@@ -75,8 +75,7 @@ module CrShader
         # uniform diffuse_tex : sampler2D, hint: hint_default_white
         # ```
         #
-        def self.topic_01_uniform_declarations : Nil
-        end
+        def self.topic_01_uniform_declarations : Nil; end
 
         # **Passing Data with Varyings**: Inter-stage communication from vertex to fragment calculations.
         #
@@ -99,8 +98,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_02_varyings : Nil
-        end
+        def self.topic_02_varyings : Nil; end
 
         # **Built-In Variables by Shader Type**: Standard Godot 4 engine built-in variables accessible in each stage.
         #
@@ -112,8 +110,7 @@ module CrShader
         # - **Spatial Fragment**: `ALBEDO`, `ALPHA`, `METALLIC`, `ROUGHNESS`, `SPECULAR`, `NORMAL_MAP`, `EMISSION`
         # - **Spatial Light**: `LIGHT`, `LIGHT_COLOR`, `ATTENUATION`, `DIFFUSE_LIGHT`, `SPECULAR_LIGHT`
         #
-        def self.topic_03_builtin_variables : Nil
-        end
+        def self.topic_03_builtin_variables : Nil; end
       end
     end
   end

@@ -95,8 +95,7 @@ module CrShader
         # bin/crshader stubs -o src/libgodot/crshader.cr
         # ```
         #
-        def self.topic_01_cli_commands : Nil
-        end
+        def self.topic_01_cli_commands : Nil; end
 
         # **IDE Autocomplete Stubs (stub_generator)**: Generating typed Crystal definitions for Godot built-in shader functions and types.
         #
@@ -114,8 +113,7 @@ module CrShader
         # crshader stubs -o src/libgodot/crshader.cr
         # ```
         #
-        def self.topic_02_ide_stubs : Nil
-        end
+        def self.topic_02_ide_stubs : Nil; end
       end
     end
   end

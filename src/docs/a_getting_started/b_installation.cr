@@ -68,8 +68,7 @@ module CrShader
         # shards check
         # ```
         #
-        def self.topic_01_shard_dependency : Nil
-        end
+        def self.topic_01_shard_dependency : Nil; end
 
         # **Building the Standalone CLI**: Compiling the standalone crshader executable for command-line use.
         #
@@ -88,8 +87,7 @@ module CrShader
         # crystal build src/cli.cr -o bin/crshader --release
         # ```
         #
-        def self.topic_02_cli_compilation : Nil
-        end
+        def self.topic_02_cli_compilation : Nil; end
 
         # **Installing the Godot Editor Addon**: Installing the GDExtension plugin into a target Godot project.
         #
@@ -106,8 +104,7 @@ module CrShader
         #
         # - **Warning**: Ensure your Godot project uses Godot 4.8 or later; earlier 4.x versions lack certain GDExtension resource loader hooks.
         #
-        def self.topic_03_addon_installation : Nil
-        end
+        def self.topic_03_addon_installation : Nil; end
       end
     end
   end

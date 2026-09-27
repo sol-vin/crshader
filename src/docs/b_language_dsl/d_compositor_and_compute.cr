@@ -76,8 +76,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_01_compositor_effects : Nil
-        end
+        def self.topic_01_compositor_effects : Nil; end
 
         # **Authoring GLSL Compute Kernels**: Defining workgroups, buffer bindings, and parallel compute logic.
         #
@@ -99,8 +98,7 @@ module CrShader
         # end
         # ```
         #
-        def self.topic_02_compute_kernels : Nil
-        end
+        def self.topic_02_compute_kernels : Nil; end
 
         # **Transpilation to GLSL & Dispatch via RenderingDevice**: Compiling .crshader compute kernels to SPIR-V bytecode and executing via Godot's RenderingDevice.
         #
@@ -115,8 +113,7 @@ module CrShader
         # # Bind buffers, create pipeline, and dispatch workgroups
         # ```
         #
-        def self.topic_03_compilation_and_dispatch : Nil
-        end
+        def self.topic_03_compilation_and_dispatch : Nil; end
       end
     end
   end
