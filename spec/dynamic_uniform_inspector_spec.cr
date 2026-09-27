@@ -7,6 +7,7 @@ describe "CrShader::DynamicUniformInspector" do
     inspector = CrShader::DynamicUniformInspector.new
     inspector.should_not be_nil
     inspector.default_values.should be_empty
+    inspector.lfos.should be_empty
   end
 
   it "parses uniforms and configures default value tracking" do
@@ -31,5 +32,35 @@ describe "CrShader::DynamicUniformInspector" do
 
     inspector.default_values.has_key?("speed").should be_true
     inspector.default_values["speed"].should eq(2.5)
+  end
+
+  it "handles vector and sampler uniforms gracefully" do
+    source = <<-CR
+      shader_type :spatial
+
+      uniform offset : Vec2 = Vec2.new(0.5, 0.5)
+      uniform direction : Vec3 = Vec3.new(0.0, 1.0, 0.0)
+      uniform weights : Vec4 = Vec4.new(1.0, 0.5, 0.2, 1.0)
+      uniform albedo_map : Sampler2D, filter: :linear, repeat: :enable
+
+      def fragment
+        ALBEDO = direction
+      end
+    CR
+
+    parser = CrShader::DslParser.new
+    program = parser.parse(source)
+
+    inspector = CrShader::DynamicUniformInspector.new
+    inspector.configure(program, nil)
+
+    inspector.current_program.should eq(program)
+  end
+
+  it "processes LFO animation frame steps" do
+    inspector = CrShader::DynamicUniformInspector.new
+    # Should not crash when no LFOs are active
+    inspector._process(0.016_f64)
+    inspector.elapsed_time.should eq(0.0)
   end
 end

@@ -1,6 +1,9 @@
 require "lapis"
 require "../../../src/crshader/editor/variable_array_control"
 require "../../../src/crshader/editor/dynamic_uniform_inspector"
+require "../../../src/crshader/editor/procedural_textures"
+require "../../../src/crshader/editor/split_wipe_controller"
+require "../../../src/crshader/editor/sandbox_bridge"
 
 # =============================================================================
 # CRShaderViewerApp - Interactive Shader Viewer Demo Controller
@@ -93,6 +96,7 @@ node CrShaderViewerApp < Node3D do
   @cam_rot_x : Float32 = -0.26_f32
   @cam_rot_y : Float32 = 0.0_f32
   @compare_mode : Bool = false
+  @split_wipe : CrShader::SplitWipeController? = nil
 
   # Comprehensive catalog of 29 shaders
   @presets : Array(ShaderPreset) = [
@@ -439,6 +443,7 @@ node CrShaderViewerApp < Node3D do
       @array_controls_container = node.as?(Godot::VBoxContainer)
     end
 
+    discover_disk_presets
     setup_ui
     select_shape("Sphere")
     filter_category("All")
@@ -517,6 +522,17 @@ node CrShaderViewerApp < Node3D do
         header.call("add_child", reset_cam_btn)
       end
 
+      # Edit in Sandbox Button
+      edit_sandbox_btn = Godot.create(Godot::Button)
+      if edit_sandbox_btn
+        edit_sandbox_btn.call("set_text", "⚡ Edit in Sandbox (E)")
+        edit_sandbox_btn.call("set_tooltip_text", "Open this shader in Live Sandbox Studio to edit code")
+        edit_sandbox_btn.connect("pressed") do |_args|
+          open_in_sandbox
+        end
+        header.call("add_child", edit_sandbox_btn)
+      end
+
       # Search Input Box
       search_input = Godot.create(Godot::LineEdit)
       if search_input
@@ -529,6 +545,17 @@ node CrShaderViewerApp < Node3D do
         header.call("add_child", search_input)
         @search_edit = search_input
       end
+    end
+
+    # Mount SplitWipeController into ScreenSpaceLayer
+    if screen_layer = get_node_or_null("ScreenSpaceLayer")
+      wipe = CrShader::SplitWipeController.new
+      screen_layer.call("add_child", wipe)
+      wipe.setup
+      wipe.on_split_changed = ->(ratio : Float32) {
+        apply_split_wipe(ratio)
+      }
+      @split_wipe = wipe
     end
 
     # Mount Lighting Studio Option in ControlsRow2
@@ -638,6 +665,11 @@ node CrShaderViewerApp < Node3D do
   end
 
   def toggle_compare_mode : Void
+    if wipe = @split_wipe
+      wipe.set_active(!wipe.is_active)
+      return
+    end
+
     @compare_mode = !@compare_mode
     if active_mesh = @mesh_instances[@current_shape]?
       if @compare_mode
@@ -651,6 +683,112 @@ node CrShaderViewerApp < Node3D do
           @post_process_rect.try &.call("set_visible", true)
         end
         activate_shader(@current_shader_idx)
+      end
+    end
+  end
+
+  def apply_split_wipe(ratio : Float32) : Void
+    preset = @presets[@current_shader_idx]?
+    return unless preset
+
+    if preset.mode == PipelineMode::ScreenSpace || preset.mode == PipelineMode::Compositor
+      if rect = @post_process_rect
+        rect.call("set_anchor_and_offset", 0, ratio.to_f64, 0.0) # ANCHOR_LEFT
+      end
+    elsif preset.mode == PipelineMode::Material
+      if active_mesh = @mesh_instances[@current_shape]?
+        if ratio < 0.5_f32
+          active_mesh.call("set_surface_override_material", 0, nil)
+        else
+          active_mesh.call("set_surface_override_material", 0, @active_material)
+        end
+      end
+    end
+  end
+
+  def discover_disk_presets : Void
+    existing_paths = Set.new(@presets.map(&.path))
+    disk_patterns = [
+      "examples/shader_viewer/shaders/*.crshader",
+      "examples/*.crshader",
+      "shaders/*.crshader"
+    ]
+    disk_patterns.each do |pattern|
+      Dir.glob(pattern).each do |p|
+        base = File.basename(p, ".crshader")
+        gd_path = "res://shaders/#{base}.gdshader"
+        next if existing_paths.includes?(gd_path)
+
+        content = begin
+                    File.read(p)
+                  rescue
+                    ""
+                  end
+        next if content.empty?
+
+        mode = if content.includes?("shader_type :compute")
+                 PipelineMode::Compute
+               elsif content.includes?("SCREEN_UV") || content.includes?("hint_screen_texture")
+                 PipelineMode::ScreenSpace
+               elsif content.includes?("compositor_effect")
+                 PipelineMode::Compositor
+               else
+                 PipelineMode::Material
+               end
+
+        category = case mode
+                   when PipelineMode::Material    then "Spatial Materials"
+                   when PipelineMode::ScreenSpace then "Screen Space"
+                   when PipelineMode::Compositor  then "Compositor Passes"
+                   when PipelineMode::Compute     then "Compute Simulation"
+                   end
+
+        name = base.gsub('_', ' ').capitalize
+        desc = "Discovered shader preset: #{File.basename(p)}"
+        @presets << ShaderPreset.new(name, gd_path, mode, category, desc)
+        existing_paths.add(gd_path)
+      end
+    end
+  end
+
+  def cycle_mesh_shape : Void
+    shapes = ["Sphere", "Cube", "Cylinder", "Torus", "Prism", "Capsule", "Plane"]
+    idx = shapes.index(@current_shape) || 0
+    next_idx = (idx + 1) % shapes.size
+    next_shape = shapes[next_idx]
+    select_shape(next_shape)
+    @shape_option.try &.call("select", next_idx)
+  end
+
+  def open_in_sandbox : Void
+    preset = @presets[@current_shader_idx]?
+    return unless preset
+
+    cr_name = preset.path.sub(/\.(gdshader|glsl)$/, ".crshader")
+    disk_paths = [
+      cr_name.sub("res://shaders/", "examples/shader_viewer/shaders/"),
+      cr_name.sub("res://shaders/", "examples/"),
+      cr_name.sub("res://shaders/", "shaders/"),
+    ]
+
+    found_path = disk_paths.find { |p| File.exists?(p) }
+    source = found_path ? File.read(found_path) : ""
+
+    if !source.empty?
+      CrShader::SandboxBridge.send_to_sandbox(source, preset.name)
+      Godot.print("[CRShaderViewer] Bridged shader to Sandbox: #{preset.name}")
+
+      sandbox_paths = [
+        "res://../shader_sandbox/scenes/sandbox.tscn",
+        "res://scenes/sandbox.tscn",
+        "examples/shader_sandbox/scenes/sandbox.tscn"
+      ]
+      sandbox_paths.each do |sp|
+        begin
+          res = get_tree.call("change_scene_to_file", sp).to_i
+          return if res == 0
+        rescue
+        end
       end
     end
   end
@@ -829,6 +967,16 @@ node CrShaderViewerApp < Node3D do
       key = event.call("get_keycode").to_i
       if key == 32 # KEY_SPACE
         toggle_compare_mode
+      elsif key >= 49 && key <= 53 # Keys '1' to '5' for Lighting Presets
+        select_lighting_preset(key - 49)
+        @lighting_option.try &.call("select", key - 49)
+      elsif key == 77 # KEY_M: Cycle mesh shape
+        cycle_mesh_shape
+      elsif key == 69 # KEY_E: Open in sandbox
+        open_in_sandbox
+      elsif key == 80 # KEY_P: Toggle auto-rotate
+        @auto_rotate = !@auto_rotate
+        @auto_rotate_check.try &.call("set_pressed", @auto_rotate)
       elsif key == 4194319 || key == 74 # KEY_LEFT or 'J'
         navigate_preset(-1)
       elsif key == 4194321 || key == 75 # KEY_RIGHT or 'K'

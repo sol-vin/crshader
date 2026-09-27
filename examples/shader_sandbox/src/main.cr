@@ -2,6 +2,8 @@ require "lapis"
 require "../../../src/crshader/compiler"
 require "../../../src/crshader/editor/variable_array_control"
 require "../../../src/crshader/editor/dynamic_uniform_inspector"
+require "../../../src/crshader/editor/procedural_textures"
+require "../../../src/crshader/editor/sandbox_bridge"
 
 # =============================================================================
 # CrShaderSandboxApp - Interactive Split-Screen Shader Sandbox & Live Studio
@@ -44,6 +46,8 @@ node CrShaderSandboxApp < Control do
 
   @active_material : Godot::ShaderMaterial? = nil
   @current_mode : SandboxMode = SandboxMode::Spatial
+  @left_pane : Godot::Control? = nil
+  @dir_light : Godot::DirectionalLight3D? = nil
 
   @auto_rotate : Bool = true
   @rotation_speed : Float32 = 0.8_f32
@@ -132,14 +136,39 @@ node CrShaderSandboxApp < Control do
       @inspector_vbox = node.as?(Godot::VBoxContainer)
     end
 
+    if node = get_node_or_null("Split/LeftPane")
+      @left_pane = node.as?(Godot::Control)
+    end
+    if node = get_node_or_null("Split/RightPane/VBox/ViewportContainer/SubViewport/DirectionalLight3D")
+      @dir_light = node.as?(Godot::DirectionalLight3D)
+    end
+
+    if sl = @status_label
+      sl.call("set_mouse_filter", 0) # MOUSE_FILTER_STOP
+      sl.connect("gui_input") do |_args|
+        jump_to_error(@last_error_line) if @last_error_line > 0
+      end
+    end
+
     setup_syntax_highlighting
     setup_ui
     populate_samples
     select_shape("Sphere")
     set_sandbox_mode(SandboxMode::Spatial)
 
-    # Initial template load
-    load_template("New 3D Spatial")
+    # Check if a shader was bridged from Viewer
+    if CrShader::SandboxBridge.has_pending?
+      pending_src, pending_title = CrShader::SandboxBridge.consume_pending
+      if pending_src && !pending_src.empty?
+        @current_sample_pristine = pending_src
+        @source_edit.try &.call("set_text", pending_src)
+        compile_code
+        set_status("Loaded from Viewer: #{pending_title || "Shader"}", is_error: false)
+      end
+    else
+      # Initial template load
+      load_template("New 3D Spatial")
+    end
   end
 
   def setup_syntax_highlighting : Void
@@ -245,6 +274,9 @@ node CrShaderSandboxApp < Control do
           "Uniform (Palette)",
           "Stage (Fragment)",
           "Stage (Vertex)",
+          "Compositor Effect",
+          "Compute Kernel",
+          "Stylized Toon PBR",
           "Require (std/dither)",
           "Require (std/curl_noise)",
           "Require (std/color_spaces)",
@@ -277,6 +309,63 @@ node CrShaderSandboxApp < Control do
           compile_code
           set_status("↺ Restored pristine sample source.", is_error: false)
         end
+      end
+    end
+
+    if toolbar2 = get_node_or_null("Split/LeftPane/VBox/Toolbar2")
+      copy_btn = Godot.create(Godot::Button)
+      if copy_btn
+        copy_btn.call("set_text", "📋 Copy GDShader")
+        copy_btn.call("set_tooltip_text", "Copy generated GDShader code to clipboard")
+        copy_btn.connect("pressed") do |_args|
+          copy_target_code
+        end
+        toolbar2.call("add_child", copy_btn)
+      end
+
+      f11_btn = Godot.create(Godot::Button)
+      if f11_btn
+        f11_btn.call("set_text", "⛶ (F11)")
+        f11_btn.call("set_tooltip_text", "Toggle fullscreen viewport preview")
+        f11_btn.connect("pressed") do |_args|
+          toggle_fullscreen_viewport
+        end
+        toolbar2.call("add_child", f11_btn)
+      end
+    end
+
+    # Mount Lighting Studio Option in ViewportToolbar
+    if vp_tb = get_node_or_null("Split/RightPane/VBox/ViewportToolbar")
+      light_lbl = Godot.create(Godot::Label)
+      if light_lbl
+        light_lbl.call("set_text", "Light:")
+        vp_tb.call("add_child", light_lbl)
+      end
+
+      light_opt = Godot.create(Godot::OptionButton)
+      if light_opt
+        light_presets = ["Studio 3-Point", "Cyberpunk Neon", "Golden Hour Sunset", "Overcast Flat", "Dark Noir"]
+        light_presets.each_with_index do |lp, idx|
+          light_opt.call("add_item", lp, idx)
+        end
+        light_opt.connect("item_selected") do |args|
+          idx = args.first?.try(&.as_i) || 0
+          select_lighting_preset(idx)
+        end
+        vp_tb.call("add_child", light_opt)
+      end
+    end
+
+    # Back to Viewer button if launched via Bridge
+    if CrShader::SandboxBridge.from_viewer? && (tb1 = get_node_or_null("Split/LeftPane/VBox/Toolbar1"))
+      back_btn = Godot.create(Godot::Button)
+      if back_btn
+        back_btn.call("set_text", "◀ Viewer")
+        back_btn.call("set_tooltip_text", "Return to Showcase Viewer")
+        back_btn.connect("pressed") do |_args|
+          return_to_viewer
+        end
+        tb1.call("add_child", back_btn)
       end
     end
 
@@ -325,17 +414,23 @@ node CrShaderSandboxApp < Control do
   def insert_snippet(name : String) : Void
     code_to_insert = case name
                      when "Uniform (Float Range)"
-                       "uniform speed : Float32 = 1.0, hint: range(0.0, 5.0, 0.1)\n"
+                       "property speed : Float32 = 1.0, range: 0.0..5.0, step: 0.1\n"
                      when "Uniform (Color)"
-                       "uniform tint : Color = Color.new(0.2, 0.6, 1.0, 1.0), hint: :source_color\n"
+                       "property tint : Color = Color.hex(\"#3498db\"), hint: :source_color\n"
                      when "Uniform (Texture)"
-                       "uniform albedo_tex : Sampler2D, filter: :linear, repeat: :enable\n"
+                       "sampler :albedo_map, filter: :linear, repeat: :enable\n"
                      when "Uniform (Palette)"
                        "uniform target_palette : ColorPalette = resource(\"res://default_palettes/cottonville.tres\")\n"
                      when "Stage (Fragment)"
-                       "def fragment\n  COLOR = vec4(UV.x, UV.y, 0.5, 1.0)\nend\n"
+                       "stage :fragment do\n  COLOR = vec4(UV.x, UV.y, 0.5, 1.0)\nend\n"
                      when "Stage (Vertex)"
-                       "def vertex\n  VERTEX.y = VERTEX.y + sin(TIME * 2.0 + VERTEX.x) * 0.1\nend\n"
+                       "stage :vertex do\n  VERTEX.y += sin(TIME * 2.0 + VERTEX.x) * 0.1\nend\n"
+                     when "Compositor Effect"
+                       "compositor_effect :post_transparent do\n  access :color\n  process_pixel do |coord, color|\n    output_pixel(coord, vec4(1.0 - color.rgb, color.a))\n  end\nend\n"
+                     when "Compute Kernel"
+                       "compute_kernel 8, 8, 1 do\n  kernel_2d(512, 512) do\n    # Auto bounds guarded thread work\n  end\nend\n"
+                     when "Stylized Toon PBR"
+                       "render_mode :diffuse_toon, :specular_toon\nproperty albedo : Color = Color.hex(\"#e67e22\"), hint: :source_color\nproperty roughness : Float32 = 0.2, range: 0.0..1.0, step: 0.05\n\nstage :fragment do\n  ALBEDO = albedo.rgb\n  ROUGHNESS = roughness\nend\n"
                      when "Require (std/dither)"
                        "require \"std/dither\"\n"
                      when "Require (std/curl_noise)"
@@ -571,6 +666,13 @@ node CrShaderSandboxApp < Control do
       target_code = compiler.compile_source(source)
       elapsed_ms = (Time.instant - start_time).total_milliseconds.round(2)
 
+      # Clear error styling on CodeEdit
+      if @last_error_line > 0 && edit
+        edit.call("set_line_as_executing", @last_error_line - 1, false)
+        edit.call("set_line_background_color", @last_error_line - 1, Color.new(0_f32, 0_f32, 0_f32, 0_f32))
+        @last_error_line = 0
+      end
+
       @target_edit.try &.call("set_text", target_code)
       set_status("✔ Compiled successfully in #{elapsed_ms}ms (#{target_code.lines.size} lines)", is_error: false)
 
@@ -591,6 +693,10 @@ node CrShaderSandboxApp < Control do
     rescue ex : CrShader::ShaderError
       line_num = ex.line_number || 1
       @last_error_line = line_num
+      if edit
+        edit.call("set_line_as_executing", line_num - 1, true)
+        edit.call("set_line_background_color", line_num - 1, Color.new(0.6_f32, 0.15_f32, 0.15_f32, 0.35_f32))
+      end
       set_status("✖ Line #{line_num}: #{ex.message} (Click to jump)", is_error: true)
       jump_to_error(line_num)
     rescue ex
@@ -651,6 +757,112 @@ node CrShaderSandboxApp < Control do
     if @auto_rotate && (pivot = @pivot) && @current_mode == SandboxMode::Spatial
       pivot.call("rotate_y", (@rotation_speed * delta.to_f32).to_f64)
       pivot.call("rotate_x", (@rotation_speed * 0.35_f32 * delta.to_f32).to_f64)
+    end
+  end
+
+  def toggle_fullscreen_viewport : Void
+    if lp = @left_pane
+      is_vis = lp.call("is_visible").as_bool
+      lp.call("set_visible", !is_vis)
+      set_status(is_vis ? "Preview Mode (F11 to restore editor)" : "Editor restored", is_error: false)
+    end
+  end
+
+  def select_lighting_preset(idx : Int32) : Void
+    light = @dir_light
+    return unless light
+
+    case idx
+    when 0 # Studio 3-Point
+      light.call("set_rotation_degrees", Vector3.new(-45_f32, 45_f32, 0_f32))
+      light.call("set_color", Color.new(1.0_f32, 0.98_f32, 0.95_f32, 1.0_f32))
+      light.call("set_param", 2, 1.2_f32)
+    when 1 # Cyberpunk Neon
+      light.call("set_rotation_degrees", Vector3.new(-30_f32, -60_f32, 0_f32))
+      light.call("set_color", Color.new(0.9_f32, 0.2_f32, 0.8_f32, 1.0_f32))
+      light.call("set_param", 2, 1.5_f32)
+    when 2 # Golden Hour Sunset
+      light.call("set_rotation_degrees", Vector3.new(-15_f32, 80_f32, 0_f32))
+      light.call("set_color", Color.new(1.0_f32, 0.6_f32, 0.2_f32, 1.0_f32))
+      light.call("set_param", 2, 1.8_f32)
+    when 3 # Overcast Flat
+      light.call("set_rotation_degrees", Vector3.new(-80_f32, 0_f32, 0_f32))
+      light.call("set_color", Color.new(0.85_f32, 0.9_f32, 1.0_f32, 1.0_f32))
+      light.call("set_param", 2, 0.8_f32)
+    when 4 # Dark Noir
+      light.call("set_rotation_degrees", Vector3.new(-60_f32, 120_f32, 0_f32))
+      light.call("set_color", Color.new(1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32))
+      light.call("set_param", 2, 2.5_f32)
+    end
+  end
+
+  def copy_target_code : Void
+    code = @target_edit.try(&.call("get_text").to_s) || ""
+    if !code.empty?
+      ds = Godot::DisplayServer.new(Godot::DisplayServer.singleton_ptr)
+      if ds && !ds.pointer.null?
+        ds.call("clipboard_set", code)
+        set_status("✔ GDShader copied to clipboard!", is_error: false)
+      end
+    end
+  end
+
+  def copy_source_code : Void
+    code = @source_edit.try(&.call("get_text").to_s) || ""
+    if !code.empty?
+      ds = Godot::DisplayServer.new(Godot::DisplayServer.singleton_ptr)
+      if ds && !ds.pointer.null?
+        ds.call("clipboard_set", code)
+        set_status("✔ CRShader source copied to clipboard!", is_error: false)
+      end
+    end
+  end
+
+  def return_to_viewer : Void
+    viewer_paths = [
+      "res://../shader_viewer/scenes/viewer.tscn",
+      "res://scenes/viewer.tscn",
+      "examples/shader_viewer/scenes/viewer.tscn"
+    ]
+    viewer_paths.each do |vp|
+      begin
+        return if get_tree.call("change_scene_to_file", vp).to_i == 0
+      rescue
+      end
+    end
+  end
+
+  def _unhandled_input(event : Godot::InputEvent) : Void
+    if event.is_a?(Godot::InputEventKey) && event.call("is_pressed").as_bool
+      key = event.call("get_keycode").to_i
+      ctrl = begin
+               event.call("is_ctrl_pressed").as_bool
+             rescue
+               false
+             end
+      shift = begin
+                event.call("is_shift_pressed").as_bool
+              rescue
+                false
+              end
+
+      if key == 4194342 # KEY_F11
+        toggle_fullscreen_viewport
+      elsif ctrl && key == 83 # KEY_S
+        if shift
+          copy_source_code
+        else
+          compile_code
+        end
+      elsif ctrl && key == 67 && shift # KEY_C + Shift
+        copy_target_code
+      elsif ctrl && key == 82 # KEY_R
+        if !@current_sample_pristine.empty?
+          @source_edit.try &.call("set_text", @current_sample_pristine)
+          compile_code
+          set_status("↺ Restored sample source.", is_error: false)
+        end
+      end
     end
   end
 end
