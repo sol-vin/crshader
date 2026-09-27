@@ -268,10 +268,10 @@ jobs:
 
           if [ ! -f "bin/lapis" ]; then
             echo "Fetching standalone Lapis CLI and bridge for Linux (target $GODOT_VER)..."
-            curl -sSL "https://github.com/sol-vin/lapis/releases/download/${GODOT_VER}/lapis-linux-x86_64.zip" -o lapis.zip 2>/dev/null || \
-            curl -sSL "https://github.com/sol-vin/lapis/releases/latest/download/lapis-linux-x86_64.zip" -o lapis.zip 2>/dev/null || true
-            if [ -f "lapis.zip" ] && [ -s "lapis.zip" ]; then
-              unzip -q -o lapis.zip -d bin/
+            curl -sSL "https://github.com/sol-vin/lapis/releases/download/${GODOT_VER}/lapis-linux-x86_64.tar.gz" -o lapis.tar.gz 2>/dev/null || \
+            curl -sSL "https://github.com/sol-vin/lapis/releases/latest/download/lapis-linux-x86_64.tar.gz" -o lapis.tar.gz 2>/dev/null || true
+            if [ -f "lapis.tar.gz" ] && [ -s "lapis.tar.gz" ]; then
+              tar -xzf lapis.tar.gz -C bin/
               chmod +x bin/lapis
             elif [ -f "lib/lapis/tools/lapis/src/lapis.cr" ]; then
               crystal build lib/lapis/tools/lapis/src/lapis.cr -o bin/lapis --no-debug
@@ -280,6 +280,15 @@ jobs:
           if [ -f "bin/lapis" ]; then
             chmod +x bin/lapis
             echo "$(pwd)/bin" >> "$GITHUB_PATH"
+          fi
+          if [ ! -f "bin/crystal_bridge.so" ] && [ ! -f "addons/crshader/bin/crystal_bridge.so" ]; then
+            echo "Fetching pre-compiled Linux GDExtension bridge..."
+            curl -sSL "https://github.com/sol-vin/lapis/releases/download/${GODOT_VER}/godot-crystal-addon-linux-x86_64.zip" -o addon-linux.zip || \
+            curl -sSL "https://github.com/sol-vin/lapis/releases/latest/download/godot-crystal-addon-linux-x86_64.zip" -o addon-linux.zip || true
+            if [ -f "addon-linux.zip" ] && [ -s "addon-linux.zip" ]; then
+              unzip -q -o addon-linux.zip
+              rm -f addon-linux.zip
+            fi
           fi
       - name: Build Addon Library (Release)
         shell: bash
