@@ -1,0 +1,38 @@
+# Ordered Dithering and Pixel Art Quantization
+# Based on Garrett Gunnell (Acerola) Retro / Pixel-Art Post-Processing
+shader_type :canvas_item
+
+render_mode :unshaded
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :nearest
+uniform pixel_size : Float32 = 4.0, hint: hint_range(1.0, 16.0)
+uniform color_depth : Float32 = 8.0, hint: hint_range(2.0, 32.0)
+uniform dither_amount : Float32 = 0.15, hint: hint_range(0.0, 1.0)
+
+# 4x4 Bayer Dither Matrix normalized to 0.0..1.0
+BAYER_4X4 = [
+   0.0 / 16.0,  8.0 / 16.0,  2.0 / 16.0, 10.0 / 16.0,
+  12.0 / 16.0,  4.0 / 16.0, 14.0 / 16.0,  6.0 / 16.0,
+   3.0 / 16.0, 11.0 / 16.0,  1.0 / 16.0,  9.0 / 16.0,
+  15.0 / 16.0,  7.0 / 16.0, 13.0 / 16.0,  5.0 / 16.0
+]
+
+def fragment
+  # Downsample UV coordinates to create pixel blocks
+  grid = SCREEN_PIXEL_SIZE * pixel_size
+  uv = floor(SCREEN_UV / grid) * grid
+
+  raw_col = screen_texture.sample(uv).rgb
+
+  # Calculate 4x4 Bayer matrix index based on screen fragment coordinate
+  x = int(FRAGCOORD.x / pixel_size) % 4
+  y = int(FRAGCOORD.y / pixel_size) % 4
+  dither_val = (BAYER_4X4[y * 4 + x] - 0.5) * dither_amount
+
+  # Apply dither offset and quantize to discrete palette steps
+  col = raw_col + vec3(dither_val, dither_val, dither_val)
+  col = clamp(col, 0.0, 1.0)
+  col = floor(col * color_depth) / color_depth
+
+  COLOR = vec4(col, 1.0)
+end

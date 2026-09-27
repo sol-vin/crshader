@@ -8,6 +8,23 @@ addons/*/bin/*
 dist/
 crash_dump*
 
+# Binaries & compiled artifacts
+*.dll
+*.so
+*.dylib
+*.pdb
+*.exp
+*.lib
+*.exe
+*.pck
+*.zip
+
+# Examples build outputs & dependencies
+examples/**/bin/
+examples/**/dist/
+examples/**/.godot/
+examples/**/addons/crystal_integration/
+
 # Crystal dependencies
 lib/
 shard.lock
@@ -18,3 +35,4 @@ validation_log.txt
 *.tmp
 ~*
 *.uid
+

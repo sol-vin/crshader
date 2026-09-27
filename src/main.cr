@@ -6,7 +6,7 @@ require "./highlighter"
 require "./crshader/editor/shader_studio"
 
 # =============================================================================
-# CrShaderPlugin - Full-featured Godot EditorPlugin in pure Crystal
+# CRShaderPlugin - Full-featured Godot EditorPlugin in pure Crystal
 # =============================================================================
 # Powered by sol-vin/lapis. The only GDScript file is `addons/crshader/plugin.gd`
 # which contains `extends CrShaderPlugin`.
@@ -18,7 +18,7 @@ require "./crshader/editor/shader_studio"
 #    whenever a .crshader file is opened or edited.
 # 3. Exposes inspector tool buttons on CRShader (Export to .gdshader, Export to .glsl,
 #    Recompile Shader) for on-demand export without polluting the project file structure.
-# 4. Optional CrShader Studio in the bottom panel for split-screen preview.
+# 4. Optional CRShader Studio in the bottom panel for split-screen preview.
 @[Tool]
 node CrShaderPlugin < EditorPlugin do
   # Cache of watched files and their modification timestamps
@@ -39,13 +39,14 @@ node CrShaderPlugin < EditorPlugin do
     # 2. Hook syntax highlighting directly into Godot's script editor
     setup_editor_highlighter_hook
 
-    # 3. Mount interactive CrShader Studio into Godot Editor bottom panel
+    # 3. Mount interactive CRShader Studio into Godot Editor bottom panel
     panel = Godot.create(CrShader::CrShaderStudioPanel)
     if panel
-      call("add_control_to_bottom_panel", panel, "CrShader Studio")
+      call("add_control_to_bottom_panel", panel, "CRShader Studio")
       @studio_panel = panel
     end
   end
+
 
   def _exit_tree : Void
     CrShader::ResourceFormatLoaderCRShader.unregister
@@ -108,3 +109,6 @@ node CrShaderPlugin < EditorPlugin do
   rescue
   end
 end
+
+CRShaderPlugin = CrShaderPlugin
+

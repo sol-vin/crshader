@@ -2,15 +2,13 @@ name: Release Addon
 
 on:
   push:
-    branches:
-      - master
-      - main
     tags:
       - 'v*'
+      - '[0-9]*'
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag Name (e.g. v1.0.0, or leave empty to auto-detect from shard.yml)'
+        description: 'Release Tag Name (e.g. v0.1.0, or leave empty to use version from shard.yml)'
         required: false
         default: ''
 
@@ -585,6 +583,20 @@ jobs:
           if [ -d "addons" ]; then
             zip -r "dist/${ADDON_NAME}-linux.zip" addons
           fi
+          # Stage Standalone Shader Viewer Example (example-viewer-linux.zip)
+          if [ -d "examples/shader_viewer" ]; then
+            STAGE_DIR="staging_viewer_linux"
+            rm -rf "$STAGE_DIR"
+            mkdir -p "$STAGE_DIR"
+            cp -r examples/shader_viewer/* "$STAGE_DIR/"
+            if [ -d "addons" ]; then
+              mkdir -p "$STAGE_DIR/addons"
+              cp -r addons/* "$STAGE_DIR/addons/"
+            fi
+            rm -rf "$STAGE_DIR/.godot"
+            (cd "$STAGE_DIR" && zip -r "../../dist/example-viewer-linux.zip" ./*)
+            rm -rf "$STAGE_DIR"
+          fi
       - name: Upload Consumer Packages Artifact (Linux)
         uses: actions/upload-artifact@v4
         with:
@@ -610,6 +622,20 @@ jobs:
           if [ -z "$ADDON_NAME" ]; then ADDON_NAME="crystal_addon"; fi
           if [ -d "addons" ]; then
             zip -r "dist/${ADDON_NAME}-macos.zip" addons
+          fi
+          # Stage Standalone Shader Viewer Example (example-viewer-macos.zip)
+          if [ -d "examples/shader_viewer" ]; then
+            STAGE_DIR="staging_viewer_macos"
+            rm -rf "$STAGE_DIR"
+            mkdir -p "$STAGE_DIR"
+            cp -r examples/shader_viewer/* "$STAGE_DIR/"
+            if [ -d "addons" ]; then
+              mkdir -p "$STAGE_DIR/addons"
+              cp -r addons/* "$STAGE_DIR/addons/"
+            fi
+            rm -rf "$STAGE_DIR/.godot"
+            (cd "$STAGE_DIR" && zip -r "../../dist/example-viewer-macos.zip" ./*)
+            rm -rf "$STAGE_DIR"
           fi
       - name: Upload Consumer Packages Artifact (macOS)
         uses: actions/upload-artifact@v4
@@ -643,11 +669,26 @@ jobs:
           if (Test-Path "addons") {
             Compress-Archive -Path "addons" -DestinationPath "dist/$addonName-windows.zip" -Force
           }
+          # Stage Standalone Shader Viewer Example (example-viewer-windows.zip)
+          if (Test-Path "examples/shader_viewer") {
+            $viewerStage = "staging_viewer_win"
+            if (Test-Path $viewerStage) { Remove-Item -Recurse -Force $viewerStage }
+            New-Item -ItemType Directory -Path $viewerStage -Force
+            Copy-Item -Recurse -Path "examples/shader_viewer/*" -Destination $viewerStage -Force
+            if (Test-Path "addons") {
+              New-Item -ItemType Directory -Path "$viewerStage/addons" -Force
+              Copy-Item -Recurse -Path "addons/*" -Destination "$viewerStage/addons" -Force
+            }
+            Remove-Item -Recurse -Force "$viewerStage/.godot" -ErrorAction SilentlyContinue
+            Compress-Archive -Path "$viewerStage/*" -DestinationPath "dist/example-viewer-windows.zip" -Force
+            Remove-Item -Recurse -Force $viewerStage -ErrorAction SilentlyContinue
+          }
       - name: Upload Consumer Packages Artifact (Windows)
         uses: actions/upload-artifact@v4
         with:
           name: consumer-packages-windows
           path: dist/
+
 
   # =========================================================================
   # COLUMN 4: PLATFORM PACKAGING
@@ -881,11 +922,17 @@ jobs:
           cat << 'EOF' > release_body.md
           ## ${{ needs.init-release.outputs.addon_name }} Addon Release Notes
 
-          ### 📦 Deliverables
+          ### 📦 Addon Deliverables
           - **`${ADDON_NAME}-universal.zip`**: Universal GDExtension package containing all available platform libraries.
           - **`${ADDON_NAME}-windows.zip`**: Optimized GDExtension bundle for **Windows (x86_64)**.
           - **`${ADDON_NAME}-linux.zip`**: Optimized GDExtension bundle for **Linux (x86_64)**.
           - **`${ADDON_NAME}-macos.zip`**: Optimized GDExtension bundle for **macOS**.
+
+          ### 🎮 Standalone Shader Viewer Showcase
+          - **`example-viewer-windows.zip`**: Standalone interactive shader viewer application for **Windows (x86_64)**.
+          - **`example-viewer-linux.zip`**: Standalone interactive shader viewer application for **Linux (x86_64)**.
+          - **`example-viewer-macos.zip`**: Standalone interactive shader viewer application for **macOS**.
+
 
           ### 🔧 Engine Compatibility
           - **Target Godot Engine**: `${GODOT_VER}`

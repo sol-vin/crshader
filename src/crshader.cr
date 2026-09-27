@@ -4,6 +4,7 @@ require "./crshader/version"
 require "./crshader/ast/types"
 require "./crshader/compiler"
 require "./crshader/watcher/file_watcher"
+require "./crshader/language"
 require "./crshader/stubs/stub_generator"
 require "./crshader/stubs"
 
@@ -183,3 +184,6 @@ HELP
     end
   end
 end
+
+CRShader = CrShader
+

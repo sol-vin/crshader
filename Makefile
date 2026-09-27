@@ -97,32 +97,70 @@ run: all
 run_editor run-editor: all
 	@$(LAPIS) editor -p . $(if $(or $(QUIT),$(QUIT_AFTER)),--quit-after $(or $(QUIT),$(QUIT_AFTER)),)
 
-setup_dev setup-dev:
+setup_dev setup-dev: setup_hooks
 	@$(LAPIS) setup $(if $(VERSION),-v "$(VERSION)",)
+
+setup_hooks setup-hooks:
+	@git config core.hookspath .githooks 2>/dev/null || true
+	@echo [Git] Enabled pre-commit version auto-increment hook (.githooks/pre-commit)
+
+bump_version bump-version bump:
+	@sh .githooks/pre-commit
+
+tag release_tag release-tag:
+	@VER=$$(awk '/^version:/ {print $$2}' shard.yml 2>/dev/null | tr -d ' "\r\n'); \
+	if [ -z "$$VER" ]; then VER="0.1.0"; fi; \
+	TAG=$${TAG:-v$$VER}; \
+	echo "Tagging release $$TAG..."; \
+	git tag -a "$$TAG" -m "Release $$TAG" && \
+	echo "Release tag '$$TAG' created successfully! Push it to trigger release with: git push origin $$TAG"
+
+viewer: all
+	@echo [CRShader] Launching interactive Shader Viewer...
+	@$(MAKE) -C examples/shader_viewer run
+
+build_viewer build-viewer: all
+	@echo [CRShader] Building Shader Viewer target...
+	@$(MAKE) -C examples/shader_viewer build
+
+package_viewer package-viewer: all
+	@echo [CRShader] Packaging Standalone Shader Viewer archive (example-viewer-$(PLATFORM).zip)...
+	@$(MAKE) -C examples/shader_viewer package RELEASE=1
+	@$(if $(filter Windows_NT,$(OS)),cmd /c "if exist examples\shader_viewer\dist\*.zip copy /Y examples\shader_viewer\dist\*.zip dist\ >nul 2>&1",cp -f examples/shader_viewer/dist/*.zip dist/ 2>/dev/null || true)
+	@echo [CRShader] Standalone Shader Viewer ready at dist/example-viewer-$(PLATFORM).zip
 
 clean:
 	@$(LAPIS) clean
+	@$(MAKE) -C examples/shader_viewer clean 2>/dev/null || true
 
 test spec:
 	@echo [Addon] Running Crystal specifications...
 	@crystal spec
 
 docs:
-	@echo [CrShader] Generating HTML API documentation from language stubs...
+	@echo [CRShader] Generating HTML API documentation from language stubs...
 	@crystal docs src/crshader.cr --output docs
 
 help:
 	@echo ===================================================================
-	@echo   Lapis Addon Template - Build and Export Commands
+	@echo   CRShader - Build and Export Commands
 	@echo ===================================================================
 	@echo   make                Build addon library and sync dependencies
 	@echo   make build          Compile addon Crystal library (game.$(SO_EXT))
-	@echo   make project-bindings Generate typed Crystal wrappers for GDScript nodes
-	@echo   make package        Create redistributable zip in dist/
+	@echo   make package        Create redistributable plugin zip in dist/
 	@echo   make export-release Build optimized release zip in dist/
-	@echo   make test           Run Crystal specifications (spec/ and spec/editor/)
+	@echo   make viewer         Launch interactive Shader Viewer showcase
+	@echo   make build-viewer   Compile Shader Viewer target example
+	@echo   make package-viewer Package standalone example-viewer-$(PLATFORM).zip
+	@echo   make test           Run Crystal specifications (spec/)
+	@echo   make docs           Generate offline HTML API documentation in docs/
 	@echo   make editor         Launch Godot Editor with addon loaded
 	@echo   make run            Run local project with Godot
 	@echo   make setup-dev      Download and install Godot engine
+	@echo   make setup-hooks    Configure git pre-commit auto-increment hook
+	@echo   make bump-version   Increment patch version in shard.yml
+	@echo   make tag            Create git release tag from current shard.yml version
 	@echo   make clean          Remove built binaries and distribution zips
 	@echo ===================================================================
+
+

@@ -1,16 +1,22 @@
 require "./spec_helper"
 require "file_utils"
 require "../src/crshader/stubs/stub_generator"
+require "../src/crshader/language"
 
 describe CrShader::StubGenerator do
   it "generates complete Crystal stubs with mirrored Godot documentation" do
     content = CrShader::StubGenerator.generate
     content.should_not be_empty
     content.should contain("module CrShader")
+    content.should contain("module Language")
+    content.should contain("module PreProcessors")
+    content.should contain("module Stages")
     content.should contain("module DSL")
     content.should contain("module Types")
     content.should contain("module Builtins")
     content.should contain("module Functions")
+    content.should contain("CRShader = CrShader")
+    content.should contain("Language = CrShader::Language")
   end
 
   it "documents built-in variables from Godot Engine docs" do
@@ -56,6 +62,41 @@ describe CrShader::StubGenerator do
     CrShader::StubGenerator.write_to_file(tmp_path)
     File.exists?(tmp_path).should be_true
     File.read(tmp_path).should contain("module CrShader")
+    File.read(tmp_path).should contain("module Language")
     FileUtils.rm(tmp_path)
+  end
+end
+
+describe "CrShader::Language Hierarchy" do
+  it "defines PreProcessors and directive methods" do
+    CrShader::Language::PreProcessors.should_not be_nil
+    CrShader::DSL.should_not be_nil
+  end
+
+  it "defines Stages and processor entry points" do
+    CrShader::Language::Stages.should_not be_nil
+    CrShader::Stages.should_not be_nil
+  end
+
+  it "defines Types and vector structs" do
+    v = CrShader::Language::Types::Vec2.new(1.0_f32, 2.0_f32)
+    v.x.should eq(1.0_f32)
+    v.y.should eq(2.0_f32)
+    v.xy.x.should eq(1.0_f32)
+  end
+
+  it "defines Functions and mathematical helpers" do
+    deg = CrShader::Language::Functions.degrees(3.14159265_f32)
+    deg.round.should eq(180)
+  end
+
+  it "defines Builtins per stage" do
+    CrShader::Language::Builtins::CanvasItem::TIME.should eq(0.0_f32)
+    CrShader::Language::Builtins::Spatial::ALPHA.should eq(1.0_f32)
+  end
+
+  it "provides top-level aliases" do
+    CRShader.should eq(CrShader)
+    Language.should eq(CrShader::Language)
   end
 end

@@ -28,7 +28,7 @@ module CrShader
 
       setup_ui
       refresh_file_list
-      Godot.print("[CRShader] CrShader Studio GUI mounted (Toolbar, SourceEdit, TargetEdit ready)")
+      Godot.print("[CRShader] CRShader Studio GUI mounted (Toolbar, SourceEdit, TargetEdit ready)")
     end
 
     def setup_ui : Void
@@ -58,7 +58,8 @@ module CrShader
         # Title Label
         title = Godot.create(Godot::Label)
         if title
-          title.call("set_text", "🔮 CrShader Studio")
+          title.call("set_text", "🔮 CRShader Studio")
+
           title.call("add_theme_font_size_override", "font_size", 14)
           title.call("add_theme_color_override", "font_color", Color.new(0.6_f32, 0.85_f32, 1.0_f32, 1.0_f32))
           toolbar.call("add_child", title)
@@ -325,4 +326,8 @@ module CrShader
       @highlighter = highlighter
     end
   end
+
+  CRShaderStudioPanel = CrShaderStudioPanel
 end
+
+
