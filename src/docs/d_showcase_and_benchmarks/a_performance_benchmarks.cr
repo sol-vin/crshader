@@ -37,7 +37,9 @@ module CrShader
       # </table>
       #
       # ### Related Guides & Source References
-      # - bin/crshader/benchmarks/compiler_bench.cr
+      # - bin/crshader/benchmarks/compiler/compiler.cr
+      # - bin/crshader/benchmarks/transpiler/transpiler.cr
+      # - bin/crshader/benchmarks/vector_math/vector_math.cr
       # - bin/crshader/Makefile
       #
       module A_PERFORMANCE_BENCHMARKS
@@ -85,16 +87,16 @@ module CrShader
 
         # **Running Compiler Benchmarks**: Commands to run local benchmark sweeps and inspect latency statistics.
         #
-        # Run the benchmark suite using `make benchmark` or Crystal directly:
+        # Run the benchmark suite using `make benchmark` or Lapis CLI directly:
         #
         # #### Working Examples
         #
         # ```bash
-        # # Run benchmarks via Makefile
+        # # Run benchmarks and generate interactive HTML dashboard
         # make benchmark
         #
-        # # Or run the benchmark harness directly
-        # crystal run benchmarks/compiler_bench.cr --release
+        # # Or run the benchmark suite via Lapis CLI directly
+        # lapis benchmarks run html
         # ```
         #
         def self.topic_02_running_benchmarks : Nil; end

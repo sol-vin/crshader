@@ -4,28 +4,28 @@ This directory contains standalone and automated performance benchmarks for the 
 
 ## Available Benchmarks
 
-- `compiler_bench.cr`: Measures CrShader DSL parsing, AST transformations, and GDShader emission speed over N iterations.
-- `compiler/compiler.cr`: Lapis CLI discovery target for automated CI regression tracking (`lapis benchmarks run`).
-- `example_bench.cr`: Microbenchmark measuring vector math and engine binding performance.
+- `compiler/`: Measures CrShader DSL parsing and GDShader code emission speed vs Godot's native engine GDShader compilation.
+- `transpiler/`: Measures multi-stage pipeline transpilation (spatial, canvas_item, particles, sky) vs Godot multi-shader resource compilation.
+- `vector_math/`: Measures high-throughput vector projections, basis rotations, and color linear interpolation in Crystal vs GDScript.
 
 ## Running Benchmarks
 
-### Direct Execution via Crystal
-
-```bash
-# Run compiler benchmark (50 iterations)
-crystal run benchmarks/compiler_bench.cr -- 50
-
-# Run microbenchmark (5000 iterations)
-crystal run benchmarks/example_bench.cr -- 5000
-```
-
-### Automated Suite & HTML Reports via Lapis CLI
+### Direct Execution via Lapis CLI
 
 ```bash
 # Run all discovered benchmarks in this directory
 lapis benchmarks
 
-# Run benchmarks and generate HTML comparison report
+# Run benchmarks and generate interactive HTML report and SVG speedup chart
 lapis benchmarks run html
+
+# Compare benchmarks against previous version
+lapis benchmarks compare html
+```
+
+### Direct Execution via Make
+
+```bash
+# Run benchmarks and update reports
+make benchmark
 ```

@@ -298,16 +298,26 @@ jobs:
           }
 
       - name: Run Addon Benchmarks (Linux & macOS)
-        if: (runner.os == 'Linux' || runner.os == 'macOS') && hashFiles('benchmarks/*.cr') != ''
+        if: (runner.os == 'Linux' || runner.os == 'macOS') && (hashFiles('benchmarks/*.cr') != '' || hashFiles('benchmarks/*/*.cr') != '')
+        continue-on-error: true
         shell: bash
         run: |
-          crystal run benchmarks/example_bench.cr -- 5000 || true
+          if [ -f "bin/lapis" ]; then
+            ./bin/lapis benchmarks run html -i 1 || true
+          else
+            make benchmark || true
+          fi
 
       - name: Run Addon Benchmarks (Windows)
-        if: runner.os == 'Windows' && hashFiles('benchmarks/*.cr') != ''
+        if: runner.os == 'Windows' && (hashFiles('benchmarks/*.cr') != '' || hashFiles('benchmarks/*/*.cr') != '')
+        continue-on-error: true
         shell: pwsh
         run: |
-          crystal run benchmarks/example_bench.cr -- 5000 | Out-Default
+          if (Test-Path "bin/lapis.exe") {
+            .\bin\lapis.exe benchmarks run html -i 1
+          } else {
+            make benchmark
+          }
 
       - name: Publish CI Step Summary
         if: always()

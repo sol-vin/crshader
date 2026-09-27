@@ -7,7 +7,9 @@ overview: |
   CRShader includes a comprehensive compiler benchmark suite measuring lexical parsing, AST construction,
   and code generation throughput across both small spatial shaders and large post-processing suites.
 related_sources:
-  - "bin/crshader/benchmarks/compiler_bench.cr"
+  - "bin/crshader/benchmarks/compiler/compiler.cr"
+  - "bin/crshader/benchmarks/transpiler/transpiler.cr"
+  - "bin/crshader/benchmarks/vector_math/vector_math.cr"
   - "bin/crshader/Makefile"
 sections:
   - id: topic_01_throughput_metrics
@@ -56,13 +58,13 @@ sections:
     title: "Running Compiler Benchmarks"
     summary: "Commands to run local benchmark sweeps and inspect latency statistics."
     content: |
-      Run the benchmark suite using `make benchmark` or Crystal directly:
+      Run the benchmark suite using `make benchmark` or Lapis CLI directly:
     examples:
       - |
         ```bash
-        # Run benchmarks via Makefile
+        # Run benchmarks and generate interactive HTML dashboard
         make benchmark
 
-        # Or run the benchmark harness directly
-        crystal run benchmarks/compiler_bench.cr --release
+        # Or run the benchmark suite via Lapis CLI directly
+        lapis benchmarks run html
         ```

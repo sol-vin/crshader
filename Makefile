@@ -159,6 +159,10 @@ docs:
 	@echo [CRShader] Generating HTML API documentation...
 	@$(LAPIS) docs -p . -e src/crshader.cr --github=sol-vin/crshader
 
+benchmark bench:
+	@echo [CRShader] Running performance benchmarks...
+	@$(LAPIS) benchmarks run html
+
 help:
 	@echo ===================================================================
 	@echo   CRShader - Build and Export Commands

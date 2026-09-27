@@ -94,7 +94,9 @@ CRShader includes a quantitative compiler benchmark measuring lexical parsing, A
 
 Run benchmarks locally:
 ```bash
-crystal run benchmarks/compiler_bench.cr
+make benchmark
+# or directly via Lapis CLI:
+lapis benchmarks run html
 ```
 
 View the latest automated [Interactive Benchmark Report](https://sol-vin.github.io/crshader/benchmarks.html) deployed live on GitHub Pages.
