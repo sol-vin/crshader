@@ -36,6 +36,9 @@ node CrShaderPlugin < EditorPlugin do
     CrShader::ResourceFormatLoaderCRShader.ensure_registered
     CrShader::ResourceFormatSaverCRShader.ensure_registered
 
+    # Skip GUI attachment in headless or export mode
+    return if headless?
+
     # 2. Hook syntax highlighting directly into Godot's script editor
     setup_editor_highlighter_hook
 
@@ -45,6 +48,31 @@ node CrShaderPlugin < EditorPlugin do
       call("add_control_to_bottom_panel", panel, "CRShader Studio")
       @studio_panel = panel
     end
+  end
+
+  private def headless? : Bool
+    return true if ::ENV["GODOT_HEADLESS"]? == "1" || ::ENV["CI"]?
+    if !Godot::DisplayServer.singleton_ptr.null?
+      begin
+        ds = Godot::DisplayServer.new(Godot::DisplayServer.singleton_ptr)
+        name = ds.get_name
+        return true if name == "headless" || name.empty?
+      rescue
+        return true
+      end
+    else
+      return true
+    end
+    if !Godot::EditorInterface.singleton_ptr.null?
+      begin
+        ed = Godot::EditorInterface.new(Godot::EditorInterface.singleton_ptr)
+        base_ctrl = ed.get_base_control
+        return true if base_ctrl.nil? || base_ctrl.pointer.null?
+      rescue
+        return true
+      end
+    end
+    false
   end
 
 

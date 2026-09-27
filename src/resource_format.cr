@@ -156,7 +156,7 @@ module CrShader
     def self._godot_has_virtual_method(method_name : String) : Bool
       norm = method_name.starts_with?('_') ? method_name : "_#{method_name}"
       case norm
-      when "_get_recognized_extensions", "_recognize", "_recognize_path", "_save"
+      when "_get_recognized_extensions", "_recognize", "_recognize_path", "_set_uid", "_save"
         true
       else
         false
@@ -169,29 +169,70 @@ module CrShader
       when "_get_recognized_extensions"
         Bridge.ret_packed_string_array(ret, ["crshader"])
       when "_recognize"
-        res_ptr = args[0]
-        if res_ptr && !res_ptr.null?
-          obj = CrShader::CRShader.new(res_ptr) rescue nil
-          ret.as(UInt8*).value = (obj && obj.alive?) ? 1_u8 : 0_u8
-        else
-          ret.as(UInt8*).value = 0_u8
+        res_ptr = Pointer(Void).null
+        if !args.null? && !args[0].null?
+          res_ptr = Bridge.ref_get_object(args[0])
         end
-      when "_recognize_path"
-        path = Bridge.arg_to_string(args[1])
-        ret.as(UInt8*).value = path.downcase.ends_with?(".crshader") ? 1_u8 : 0_u8
-      when "_save"
-        res_ptr = args[0]
-        path = Bridge.arg_to_string(args[1])
-
-        if res_ptr && !res_ptr.null? && path.downcase.ends_with?(".crshader")
-          shader = CrShader::CRShader.new(res_ptr) rescue nil
-          if shader && shader.alive?
-            resolved = ResourceFormatLoaderCRShader.resolve_file_path(path)
-            resolved = path if resolved.empty?
-            File.write(resolved, shader.crshader_source)
-            ret.as(Int64*).value = 0_i64 # OK
-            return
+        recognize = false
+        if !res_ptr.null?
+          if inst = Bridge.find_alive_instance(res_ptr)
+            recognize = inst.is_a?(CrShader::CRShader)
           end
+          unless recognize
+            path = Bridge.resource_get_path(res_ptr)
+            recognize = path.downcase.ends_with?(".crshader")
+          end
+          unless recognize
+            recognize = Bridge.object_is_class(res_ptr, "CRShader")
+          end
+        end
+        ret.as(UInt8*).value = recognize ? 1_u8 : 0_u8
+      when "_recognize_path"
+        path = (!args.null? && !args[1].null?) ? Bridge.arg_to_string(args[1]) : ""
+        recognize = path.downcase.ends_with?(".crshader")
+        if !recognize && !args.null? && !args[0].null?
+          p0_str = (Bridge.arg_to_string(args[0]) rescue "")
+          recognize = p0_str.downcase.ends_with?(".crshader")
+        end
+        if !recognize && !args.null? && !args[0].null?
+          res_ptr = Bridge.ref_get_object(args[0])
+          if !res_ptr.null?
+            if inst = Bridge.find_alive_instance(res_ptr)
+              recognize = inst.is_a?(CrShader::CRShader)
+            end
+            unless recognize
+              r_path = Bridge.resource_get_path(res_ptr)
+              recognize = r_path.downcase.ends_with?(".crshader")
+            end
+            unless recognize
+              recognize = Bridge.object_is_class(res_ptr, "CRShader")
+            end
+          end
+        end
+        ret.as(UInt8*).value = recognize ? 1_u8 : 0_u8
+      when "_set_uid"
+        ret.as(Int32*).value = 0_i32 # OK
+      when "_save"
+        res_ptr = Pointer(Void).null
+        if !args.null? && !args[0].null?
+          res_ptr = Bridge.ref_get_object(args[0])
+        end
+        inst = Bridge.find_alive_instance(res_ptr)
+        if inst.nil? && !args.null? && !args[0].null?
+          inst = Bridge.find_alive_instance(args[0])
+          res_ptr = args[0] if inst
+        end
+        path = (!args.null? && !args[1].null?) ? Bridge.arg_to_string(args[1]) : ""
+        if path.empty? && !res_ptr.null?
+          path = Bridge.resource_get_path(res_ptr)
+        end
+
+        if inst && inst.is_a?(CrShader::CRShader) && !path.empty? && path.downcase.ends_with?(".crshader")
+          resolved = ResourceFormatLoaderCRShader.resolve_file_path(path)
+          resolved = path if resolved.empty?
+          File.write(resolved, inst.crshader_source)
+          ret.as(Int64*).value = 0_i64 # OK
+          return
         end
         ret.as(Int64*).value = 1_i64 # FAILED
       else
