@@ -253,9 +253,11 @@ jobs:
           if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" -Force }
           $godotVer = "4.8-dev6"
           if (Test-Path "godot-version.yml") {
-            $raw = Get-Content "godot-version.yml" -Raw
-            if ($raw -match 'version:\s*["'"'"']?([^"'"'"'\r\n]+)["'"'"']?') {
-              $godotVer = $matches[1].Trim()
+            foreach ($line in (Get-Content "godot-version.yml")) {
+              if ($line -match "version:\s*(.+)") {
+                $godotVer = $matches[1].Trim(" `"`'")
+                break
+              }
             }
           }
           if (-not (Test-Path "bin/lapis.exe")) {
