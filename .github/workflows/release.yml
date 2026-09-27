@@ -246,6 +246,24 @@ jobs:
           repo: godotengine/godot-builds
           version: 4.8-dev6
           enable_cache: true
+      - name: Configure Godot Executable
+        shell: pwsh
+        run: |
+          $candidates = @($env:GODOT4, $env:GODOT, $env:GODOT_BIN, (Get-Command godot.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source))
+          foreach ($cand in $candidates) {
+            if ($cand -and (Test-Path $cand)) {
+              Write-Host "Found Godot at $cand, copying to ./godot.exe"
+              Copy-Item -Path $cand -Destination "./godot.exe" -Force
+              break
+            }
+          }
+          if (-not (Test-Path "./godot.exe")) {
+            $found = Get-ChildItem -Path "$env:RUNNER_TEMP", "$env:USERPROFILE", "$env:GITHUB_WORKSPACE/.." -Recurse -Filter "Godot*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              Write-Host "Discovered Godot at $($found.FullName), copying to ./godot.exe"
+              Copy-Item -Path $found.FullName -Destination "./godot.exe" -Force
+            }
+          }
       - name: Ensure Lapis CLI & Bridge
         shell: pwsh
         run: |
@@ -342,6 +360,24 @@ jobs:
           repo: godotengine/godot-builds
           version: 4.8-dev6
           enable_cache: true
+      - name: Configure Godot Executable
+        shell: pwsh
+        run: |
+          $candidates = @($env:GODOT4, $env:GODOT, $env:GODOT_BIN, (Get-Command godot.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source))
+          foreach ($cand in $candidates) {
+            if ($cand -and (Test-Path $cand)) {
+              Write-Host "Found Godot at $cand, copying to ./godot.exe"
+              Copy-Item -Path $cand -Destination "./godot.exe" -Force
+              break
+            }
+          }
+          if (-not (Test-Path "./godot.exe")) {
+            $found = Get-ChildItem -Path "$env:RUNNER_TEMP", "$env:USERPROFILE", "$env:GITHUB_WORKSPACE/.." -Recurse -Filter "Godot*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              Write-Host "Discovered Godot at $($found.FullName), copying to ./godot.exe"
+              Copy-Item -Path $found.FullName -Destination "./godot.exe" -Force
+            }
+          }
       - name: Download Core Binaries
         uses: actions/download-artifact@v4
         with:
@@ -349,9 +385,13 @@ jobs:
       - name: Run Godot Headless Verification
         shell: pwsh
         run: |
-          $godot = Get-Command godot.exe -ErrorAction SilentlyContinue
-          if ($godot) {
-            & $godot.Source --headless --rendering-driver opengl3 --path . --quit
+          if (Test-Path "./godot.exe") {
+            ./godot.exe --headless --rendering-driver opengl3 --path . --quit
+          } else {
+            $godot = Get-Command godot.exe -ErrorAction SilentlyContinue
+            if ($godot) {
+              & $godot.Source --headless --rendering-driver opengl3 --path . --quit
+            }
           }
 
   # =========================================================================
