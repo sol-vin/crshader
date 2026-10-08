@@ -54,7 +54,7 @@ jobs:
           if [ -f "godot-version.yml" ]; then
             GODOT_VER=$(sed -n 's/.*version:[[:space:]]*["'"'"']\?\([^"'"'"']\+\)["'"'"']\?.*/\1/p' godot-version.yml | tr -d '\r\n[:space:]')
           fi
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
           echo "godot_version=$GODOT_VER" >> "$GITHUB_OUTPUT"
           echo "Resolved Godot Version: $GODOT_VER"
 
@@ -238,7 +238,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: true
       - name: Configure Godot Executable
         shell: bash
@@ -264,7 +264,7 @@ jobs:
           if [ -f "godot-version.yml" ]; then
             GODOT_VER=$(sed -n 's/.*version:[[:space:]]*["'"'"']\?\([^"'"'"']\+\)["'"'"']\?.*/\1/p' godot-version.yml | tr -d '\r\n[:space:]')
           fi
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
 
           if [ ! -f "bin/lapis" ]; then
             echo "Fetching standalone Lapis CLI and bridge for Linux (target $GODOT_VER)..."
@@ -328,7 +328,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: true
       - name: Configure Godot Executable
         shell: pwsh
@@ -360,7 +360,7 @@ jobs:
         run: |
           shards install
           if (-not (Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" -Force }
-          $godotVer = "4.8-dev6"
+          $godotVer = "4.8-dev7"
           if (Test-Path "godot-version.yml") {
             foreach ($line in (Get-Content "godot-version.yml")) {
               if ($line -match "version:\s*(.+)") {
@@ -432,7 +432,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: true
       - name: Configure Godot Executable
         shell: bash
@@ -457,7 +457,7 @@ jobs:
           if [ -f "godot-version.yml" ]; then
             GODOT_VER=$(sed -n 's/.*version:[[:space:]]*["'"'"']\?\([^"'"'"']\+\)["'"'"']\?.*/\1/p' godot-version.yml | tr -d '\r\n[:space:]')
           fi
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
 
           if [ ! -f "bin/lapis" ]; then
             echo "Fetching standalone Lapis CLI and bridge for macOS (target $GODOT_VER)..."
@@ -512,7 +512,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: true
       - name: Configure Godot Executable
         shell: bash
@@ -552,7 +552,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: true
       - name: Configure Godot Executable
         shell: pwsh
@@ -605,7 +605,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: true
       - name: Configure Godot Executable
         shell: bash
@@ -1146,7 +1146,7 @@ jobs:
         uses: appsinacup/action_setup_godot@main
         with:
           repo: godotengine/godot-builds
-          version: 4.8-dev6
+          version: 4.8-dev7
           enable_cache: false
 
       - name: Configure Godot Executable
@@ -1154,7 +1154,7 @@ jobs:
         shell: bash
         run: |
           GODOT_VER="${{ needs.init-release.outputs.godot_version }}"
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
           if [ -n "$GODOT4" ] && [ -f "$GODOT4" ] && file -b "$GODOT4" | grep -q "ELF.*x86-64"; then
             cp "$GODOT4" ./godot
             chmod +x ./godot
@@ -1191,7 +1191,7 @@ jobs:
           fi
           if [ ! -f "bin/lapis" ]; then
             echo "Downloading Lapis CLI release binary..."
-            curl -sSL "https://github.com/sol-vin/lapis/releases/download/4.8-dev6/lapis-linux-x86_64.tar.gz" -o lapis.tar.gz 2>/dev/null || \
+            curl -sSL "https://github.com/sol-vin/lapis/releases/download/4.8-dev7/lapis-linux-x86_64.tar.gz" -o lapis.tar.gz 2>/dev/null || \
             curl -sSL "https://github.com/sol-vin/lapis/releases/latest/download/lapis-linux-x86_64.tar.gz" -o lapis.tar.gz 2>/dev/null || true
             if [ -f "lapis.tar.gz" ] && [ -s "lapis.tar.gz" ]; then
               tar -xzf lapis.tar.gz -C bin/ 2>/dev/null || true
@@ -1210,7 +1210,7 @@ jobs:
         run: |
           mkdir -p benchmarks/reports docs/benchmarks/history
           TAG="${{ needs.init-release.outputs.godot_version }}"
-          if [ -z "$TAG" ]; then TAG="4.8-dev6"; fi
+          if [ -z "$TAG" ]; then TAG="4.8-dev7"; fi
           if [ -f "bin/lapis" ]; then
             ./bin/lapis benchmarks run html --tag "$TAG" -i 3 || ./bin/lapis benchmarks run html -i 1 || true
           fi

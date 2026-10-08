@@ -61,7 +61,7 @@ jobs:
           if [ -f "godot-version.yml" ]; then
             GODOT_VER=$(sed -n 's/.*version:[[:space:]]*["'"'"']\?\([^"'"'"']\+\)["'"'"']\?.*/\1/p' godot-version.yml | tr -d '\r\n[:space:]')
           fi
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
           echo "godot_version=$GODOT_VER" >> "$GITHUB_OUTPUT"
           echo "Resolved Godot Engine Version: $GODOT_VER"
 
@@ -117,7 +117,7 @@ jobs:
         shell: pwsh
         run: |
           $godotVer = "${{ steps.godot-meta.outputs.godot_version }}"
-          if (-not $godotVer) { $godotVer = "4.8-dev6" }
+          if (-not $godotVer) { $godotVer = "4.8-dev7" }
           $candidate = $env:GODOT4
           if (-not $candidate) { $candidate = $env:GODOT4_BIN }
           if (-not $candidate) { $candidate = $env:GODOT }
@@ -159,7 +159,7 @@ jobs:
         run: |
           mkdir -p bin
           GODOT_VER="${{ steps.godot-meta.outputs.godot_version }}"
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
           if command -v lapis >/dev/null 2>&1; then
             echo "Lapis found on system PATH: $(command -v lapis)"
           elif [ -f "bin/lapis" ]; then
@@ -212,7 +212,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "bin" | Out-Null
           $godotVer = "${{ steps.godot-meta.outputs.godot_version }}"
-          if (-not $godotVer) { $godotVer = "4.8-dev6" }
+          if (-not $godotVer) { $godotVer = "4.8-dev7" }
           if (Get-Command lapis.exe -ErrorAction SilentlyContinue) {
             Write-Host "Lapis found on system PATH"
           } elseif (Test-Path "bin/lapis.exe") {
@@ -350,7 +350,7 @@ jobs:
           if [ -f "godot-version.yml" ]; then
             GODOT_VER=$(sed -n 's/.*version:[[:space:]]*["'"'"']\?\([^"'"'"']\+\)["'"'"']\?.*/\1/p' godot-version.yml | tr -d '\r\n[:space:]')
           fi
-          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev6"; fi
+          if [ -z "$GODOT_VER" ]; then GODOT_VER="4.8-dev7"; fi
           echo "godot_version=$GODOT_VER" >> "$GITHUB_OUTPUT"
           echo "Resolved Godot Engine Version: $GODOT_VER"
 
