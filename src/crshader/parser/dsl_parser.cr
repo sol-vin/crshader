@@ -248,6 +248,12 @@ module CrShader
       when "kernel_2d"
         process_kernel_2d_call(node)
 
+      when "particle_simulation", "compute_particles"
+        process_particle_simulation_call(node)
+
+      when "step_particles"
+        process_step_particles_call(node)
+
       when "varying"
         process_varying_call(node)
 
@@ -1172,6 +1178,150 @@ module CrShader
       else
         main_body_exprs << block.body
       end
+      parsed_def.body = Crystal::Expressions.new(main_body_exprs)
+      @program.functions["main"] = parsed_def
+    end
+
+    private def process_particle_simulation_call(node : Crystal::Call)
+      @program.shader_type = ShaderType::Compute
+      @program.target = ShaderTarget::GLSL
+      @program.requires.add("particles")
+
+      x = node.args[0]?.try(&.to_s.to_i?) || 64
+      y = node.args[1]?.try(&.to_s.to_i?) || 1
+      z = node.args[2]?.try(&.to_s.to_i?) || 1
+      @program.compute_layout = ComputeLayout.new(x, y, z)
+
+      buf_name = "ParticleBuffer"
+      buf_instance = "particle_buffer"
+      set_idx = 0
+      bind_idx = 0
+      auto_buffers = true
+
+      node.named_args.try &.each do |narg|
+        case narg.name
+        when "local_size", "workgroup_size"
+          @program.compute_layout = ComputeLayout.new(narg.value.to_s.to_i? || 64, 1, 1)
+        when "buffer"
+          raw = node_to_string_or_sym(narg.value)
+          buf_name = raw.camelcase
+          buf_instance = raw.underscore
+        when "set"
+          set_idx = narg.value.to_s.to_i? || 0
+        when "binding"
+          bind_idx = narg.value.to_s.to_i? || 0
+        when "auto_buffers"
+          auto_buffers = narg.value.to_s != "false"
+        end
+      end
+
+      if block = node.block
+        if block.body.is_a?(Crystal::Expressions)
+          block.body.as(Crystal::Expressions).expressions.each { |child| process_top_level_node(child) }
+        else
+          process_top_level_node(block.body)
+        end
+      end
+
+      if auto_buffers && @program.buffers.empty?
+        @program.buffers << BufferDecl.new(
+          name: buf_name,
+          instance_name: buf_instance,
+          set: set_idx,
+          binding: bind_idx,
+          std: "std430",
+          restrict: true,
+          readonly: false,
+          fields: [
+            BufferField.new("positions", "Vec4", is_array: true),
+            BufferField.new("velocities", "Vec4", is_array: true),
+            BufferField.new("colors", "Vec4", is_array: true),
+          ]
+        )
+      end
+
+      if auto_buffers && @program.push_constants.empty?
+        @program.push_constants << PushConstantDecl.new(
+          name: "SimParams",
+          instance_name: "sim_params",
+          fields: [
+            BufferField.new("delta_time", "Float32", is_array: false),
+            BufferField.new("particle_count", "UInt32", is_array: false),
+            BufferField.new("gravity", "Vec3", is_array: false),
+            BufferField.new("drag", "Float32", is_array: false),
+            BufferField.new("turbulence", "Float32", is_array: false),
+            BufferField.new("time", "Float32", is_array: false),
+          ]
+        )
+      end
+    end
+
+    private def process_step_particles_call(node : Crystal::Call)
+      return unless (block = node.block)
+
+      buf_inst = @program.buffers.first?.try(&.instance_name) || "particle_buffer"
+      pc_inst = @program.push_constants.first?.try(&.instance_name) || "sim_params"
+      bound_expr = if first_arg = node.args.first?
+                     node_to_string_or_sym(first_arg)
+                   else
+                     "#{pc_inst}.particle_count"
+                   end
+
+      idx_var = block.args[0]?.try(&.name) || "idx"
+      pos_var = block.args[1]?.try(&.name) || "pos"
+      vel_var = block.args[2]?.try(&.name) || "vel"
+      life_var = block.args[3]?.try(&.name) || "life"
+
+      preamble = <<-CR
+        def main
+          #{idx_var} = gl_GlobalInvocationID.x
+          if #{idx_var} >= #{bound_expr}
+            return
+          end
+          __pos_life = #{buf_inst}.positions[#{idx_var}]
+          __vel_max = #{buf_inst}.velocities[#{idx_var}]
+          #{pos_var} = __pos_life.xyz
+          #{life_var} = __pos_life.w
+          #{vel_var} = __vel_max.xyz
+        end
+      CR
+
+      parsed_def = Crystal::Parser.new(preamble).parse.as(Crystal::Def)
+      main_body_exprs = parsed_def.body.as(Crystal::Expressions).expressions
+
+      if block.body.is_a?(Crystal::Expressions)
+        main_body_exprs.concat(block.body.as(Crystal::Expressions).expressions)
+      else
+        main_body_exprs << block.body
+      end
+
+      pos_store = Crystal::Call.new(
+        Crystal::Call.new(Crystal::Var.new(buf_inst), "positions"),
+        "[]=",
+        [
+          Crystal::Var.new(idx_var).as(Crystal::ASTNode),
+          Crystal::Call.new(nil, "vec4", [
+            Crystal::Var.new(pos_var).as(Crystal::ASTNode),
+            Crystal::Var.new(life_var).as(Crystal::ASTNode),
+          ] of Crystal::ASTNode).as(Crystal::ASTNode),
+        ] of Crystal::ASTNode
+      )
+
+      vel_store = Crystal::Call.new(
+        Crystal::Call.new(Crystal::Var.new(buf_inst), "velocities"),
+        "[]=",
+        [
+          Crystal::Var.new(idx_var).as(Crystal::ASTNode),
+          Crystal::Call.new(nil, "vec4", [
+            Crystal::Var.new(vel_var).as(Crystal::ASTNode),
+            Crystal::Call.new(Crystal::Var.new("__vel_max"), "w").as(Crystal::ASTNode),
+          ] of Crystal::ASTNode).as(Crystal::ASTNode),
+        ] of Crystal::ASTNode
+      )
+
+      main_body_exprs << pos_store
+      main_body_exprs << vel_store
+
       parsed_def.body = Crystal::Expressions.new(main_body_exprs)
       @program.functions["main"] = parsed_def
     end

@@ -8,6 +8,8 @@ require "./crshader/language"
 require "./crshader/stubs/stub_generator"
 require "./crshader/stubs"
 require "./crshader/generator/node_generator"
+require "./crshader/compute/particle_simulation_core"
+require "./crshader/compute/particle_simulation_dsl"
 {% unless flag?(:release) %}
 require "./docs"
 {% end %}
@@ -60,7 +62,7 @@ module CrShader
 
         parser = OptionParser.parse(sub_args) do |opts|
           opts.banner = "Usage: crshader generate-node <input.crshader> [options]"
-          opts.on("-t TYPE", "--type TYPE", "Node type: mesh3d, canvas2d, compositor, or host (default: mesh3d)") { |t| node_type_str = t }
+          opts.on("-t TYPE", "--type TYPE", "Node type: mesh3d, canvas2d, compositor, particles, or host (default: mesh3d)") { |t| node_type_str = t }
           opts.on("-n NAME", "--name NAME", "Class name for generated Godot node") { |n| class_name = n }
           opts.on("-o PATH", "--output PATH", "Output .cr file path") { |o| node_out_target = o }
           opts.on("-h", "--help", "Show help") { puts opts; exit 0 }
@@ -80,6 +82,8 @@ module CrShader
                  NodeGenerator::NodeType::ScreenSpaceCanvas
                when "compositor", "compositoreffect"
                  NodeGenerator::NodeType::CompositorEffect
+               when "particles", "computeparticles", "compute_particles"
+                 NodeGenerator::NodeType::ComputeParticles
                else
                  NodeGenerator::NodeType::MaterialHost
                end
@@ -280,6 +284,16 @@ module CrShader
                         imageStore(output_image, pos, color)
                       end
                     CR
+                  when "compute_particles", "particles_compute"
+                    <<-CR
+                      particle_simulation 64 do
+                        step_particles do |idx, pos, vel, life|
+                          life = life - sim_params.delta_time
+                          vel = apply_linear_drag(vel + sim_params.gravity * sim_params.delta_time, sim_params.drag, sim_params.delta_time)
+                          pos = integrate_euler(pos, vel, sim_params.delta_time)
+                        end
+                      end
+                    CR
                   else
                     <<-CR
                       shader_type :spatial
@@ -315,7 +329,7 @@ module CrShader
 
     private def default_output_for(input_file : String, target : ShaderTarget?) : String
       content = File.exists?(input_file) ? File.read(input_file) : ""
-      is_compute = content =~ /(?:shader_type\s*:?compute|shader\s*:?compute)/
+      is_compute = content =~ /(?:shader_type\s*:?compute|shader\s*:?compute|compute_kernel|particle_simulation|compute_particles|compositor_effect)/
       ext = is_compute || target == ShaderTarget::GLSL ? ".glsl" : ".gdshader"
       input_file.sub(/\.crshader$/, ext)
     end

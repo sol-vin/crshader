@@ -39,6 +39,11 @@ module CrShader
       #       <td><code>.topic_03_compilation_and_dispatch</code></td>
       #       <td>Compiling .crshader compute kernels to SPIR-V bytecode and executing via Godot's RenderingDevice.</td>
       #     </tr>
+      #     <tr>
+      #       <td><strong>Compute Shader Particle Simulation</strong></td>
+      #       <td><code>.topic_04_compute_particle_simulation</code></td>
+      #       <td>Simulating massively parallel GPU particles with std430 storage buffers, attractors, and curl noise.</td>
+      #     </tr>
       #   </tbody>
       # </table>
       #
@@ -114,6 +119,27 @@ module CrShader
         # ```
         #
         def self.topic_03_compilation_and_dispatch : Nil; end
+
+        # **Compute Shader Particle Simulation**: Simulating massively parallel GPU particles with std430 storage buffers, attractors, and curl noise.
+        #
+        # CRShader provides a Two-Tier Compute Particle Simulation architecture (`CrShader::Compute::ParticleSimulationEngine`
+        # and `CrShader::Compute.particle_simulation`) along with the `particle_simulation` / `step_particles` shader DSL and
+        # `std/particles` physics library (`integrate_euler`, `integrate_verlet`, `apply_linear_drag`, `attract_point`, `vortex_force_3d`, `wrap_box_3d`).
+        #
+        # #### Working Examples
+        #
+        # ```crystal
+        # particle_simulation 64 do
+        #   step_particles do |idx, pos, vel, life|
+        #     life = life - sim_params.delta_time
+        #     accel = sim_params.gravity + attract_point(pos, vec3(0.0, 5.0, 0.0), 15.0, 20.0)
+        #     vel = apply_linear_drag(vel + accel * sim_params.delta_time, sim_params.drag, sim_params.delta_time)
+        #     pos = integrate_euler(pos, vel, sim_params.delta_time)
+        #   end
+        # end
+        # ```
+        #
+        def self.topic_04_compute_particle_simulation : Nil; end
       end
     end
   end

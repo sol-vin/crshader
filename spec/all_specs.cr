@@ -8,4 +8,5 @@ require "./advanced_features_spec"
 require "./examples_spec"
 require "./stubs_spec"
 require "./crshader_resource_spec"
+require "./compute_particle_simulation_spec"
 

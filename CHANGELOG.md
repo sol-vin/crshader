@@ -1,4 +1,9 @@
 # CARBON CHANGELOG
+## [0.1.45] - 2026-10-13
+### ✨ Features & Improvements
+- ✦ **[COMPUTE]** expand CRShader with Two-Tier Compute Shader Particle Simulation engine, declarative builder, std/particles library, and ComputeParticles node generator
+
+---
 ## [0.1.44] - 2026-10-12
 ### 🐛 Bug Fixes
 - ✓ **[CI]** prevent Windows smoke test hang, fix macOS GDExtension type hierarchy, and correct benchmark shard imports ([`0d9165e`](https://github.com/sol-vin/crshader/commit/0d9165e))

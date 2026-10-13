@@ -77,6 +77,43 @@ module CrShader
       @uniform_set_dirty = true
     end
 
+    # Cached push constant payload bytes for the next dispatch
+    property push_constant_bytes : Bytes? = nil
+
+    # Sets push constant bytes (aligned to 16 bytes as required by Vulkan / RenderingDevice)
+    def set_push_constant(bytes : Bytes) : Void
+      if bytes.size % 16 == 0
+        @push_constant_bytes = bytes
+      else
+        aligned_size = ((bytes.size + 15) // 16) * 16
+        padded = Bytes.new(aligned_size, 0_u8)
+        padded.copy_from(bytes)
+        @push_constant_bytes = padded
+      end
+    end
+
+    # Allocates a GPU storage buffer of `byte_size` bytes on the RenderingDevice
+    # and optionally binds it to `binding`
+    def create_storage_buffer(byte_size : Int32, data : Bytes? = nil, binding : Int32? = nil) : Int64
+      return 0_i64 if byte_size <= 0
+      dev = @rd
+      return 0_i64 unless dev
+
+      rid = dev.call_int("storage_buffer_create", byte_size)
+      if rid > 0 && (bind_idx = binding)
+        bind_storage_buffer(bind_idx, rid)
+      end
+      rid
+    rescue ex
+      Godot.print("[ComputeHelper] create_storage_buffer error: #{ex.message}")
+      0_i64
+    end
+
+    # Dispatches a 1D compute kernel (e.g. particle simulation) over `element_count` items
+    def dispatch_1d(element_count : Int32, local_x : Int32 = 64) : Bool
+      dispatch(element_count, 1, 1, local_x, 1, 1)
+    end
+
     # Rebuilds the RDUniform set if bindings changed
     def update_uniform_set(set_index : Int32 = 0) : Bool
       dev = @rd

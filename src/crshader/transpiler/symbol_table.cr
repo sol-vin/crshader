@@ -461,11 +461,28 @@ module CrShader
           if (sname.each_char.all? { |ch| "xyzw".includes?(ch) } ||
               sname.each_char.all? { |ch| "rgba".includes?(ch) } ||
               sname.each_char.all? { |ch| "stpq".includes?(ch) }) && sname.size <= 4
+            recv_type = infer_type(obj)
+            is_uvec = recv_type.starts_with?("uvec")
+            is_ivec = recv_type.starts_with?("ivec")
             case sname.size
-            when 1 then return "float"
-            when 2 then return "vec2"
-            when 3 then return "vec3"
-            when 4 then return "vec4"
+            when 1 then return is_uvec ? "uint" : (is_ivec ? "int" : "float")
+            when 2 then return is_uvec ? "uvec2" : (is_ivec ? "ivec2" : "vec2")
+            when 3 then return is_uvec ? "uvec3" : (is_ivec ? "ivec3" : "vec3")
+            when 4 then return is_uvec ? "uvec4" : (is_ivec ? "ivec4" : "vec4")
+            end
+          end
+        end
+
+        # Check struct/buffer member field lookup (e.g. particle_buffer.positions or sim_params.gravity)
+        if (obj = node.obj) && node.args.empty?
+          obj_str = case obj
+                    when Crystal::Var  then obj.name
+                    when Crystal::Call then obj.obj.nil? && obj.args.empty? ? obj.name : nil
+                    else                    nil
+                    end
+          if obj_str
+            if field_type = lookup_type("#{obj_str}.#{node.name}")
+              return field_type
             end
           end
         end

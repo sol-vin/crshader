@@ -109,8 +109,10 @@ module CrShader
           if f.is_array
             size_str = f.array_size ? "[#{f.array_size}]" : "[]"
             @io << "\t#{ftype} #{f.name}#{size_str};\n"
+            @symbol_table.register_global("#{b.instance_name}.#{f.name}", "#{ftype}#{size_str}")
           else
             @io << "\t#{ftype} #{f.name};\n"
+            @symbol_table.register_global("#{b.instance_name}.#{f.name}", ftype)
           end
         end
         @io << "} #{b.instance_name};\n\n"
@@ -128,8 +130,10 @@ module CrShader
           if f.is_array
             size_str = f.array_size ? "[#{f.array_size}]" : "[]"
             @io << "\t#{ftype} #{f.name}#{size_str};\n"
+            @symbol_table.register_global("#{pc.instance_name}.#{f.name}", "#{ftype}#{size_str}")
           else
             @io << "\t#{ftype} #{f.name};\n"
+            @symbol_table.register_global("#{pc.instance_name}.#{f.name}", ftype)
           end
         end
         @io << "} #{pc.instance_name};\n\n"

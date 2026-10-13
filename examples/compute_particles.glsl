@@ -14,7 +14,7 @@ layout(push_constant, std430) uniform Params {
 } params;
 
 void main() {
-	float idx = gl_GlobalInvocationID.x;
+	uint idx = gl_GlobalInvocationID.x;
 	if ((idx >= params.particle_count)) {
 		return;
 	}

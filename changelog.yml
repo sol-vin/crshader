@@ -23,9 +23,20 @@ settings:
       title: "\U0001F6E0️ Chores & Tooling"
       bullet: •
 releases:
+- version: 0.1.45
+  date: "2026-10-13"
+  status: active
+  entries:
+  - type: feat
+    description: expand CRShader with Two-Tier Compute Shader Particle Simulation
+      engine, declarative builder, std/particles library, and ComputeParticles node
+      generator
+    bullet: ✦
+    badge: '[COMPUTE]'
+    author: Theta (Θ)
 - version: 0.1.44
   date: "2026-10-12"
-  status: active
+  status: released
   entries:
   - type: chore
     description: upgrade to Godot 4.8-dev7 and update workflow configurations
