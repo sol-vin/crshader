@@ -2,7 +2,7 @@
 
 <!-- carbon:badges -->
 [![CI](https://github.com/sol-vin/crshader/actions/workflows/ci.yml/badge.svg)](https://github.com/sol-vin/crshader/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.43-blue.svg)](https://github.com/sol-vin/crshader/releases)
+[![Version](https://img.shields.io/badge/version-0.1.44-blue.svg)](https://github.com/sol-vin/crshader/releases)
 [![Crystal](https://img.shields.io/badge/crystal-%3E%3D%201.20.0-black.svg)](https://crystal-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Godot](https://img.shields.io/badge/Godot-4.8+-478CBF.svg?logo=godotengine)](https://godotengine.org)

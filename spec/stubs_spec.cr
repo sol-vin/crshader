@@ -96,7 +96,6 @@ describe "CrShader::Language Hierarchy" do
   end
 
   it "provides top-level aliases" do
-    CRShader.should eq(CrShader)
     Language.should eq(CrShader::Language)
   end
 end

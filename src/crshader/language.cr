@@ -123,5 +123,4 @@ module CrShader
 end
 
 # Re-export top-level aliases for universal accessibility across docs and IDE tools
-CRShader = CrShader
 Language = CrShader::Language
