@@ -337,6 +337,50 @@ module CrShader
       end
     CR
 
+    PARTICLES_LIB = <<-CR
+      def integrate_euler(pos : Vec3, vel : Vec3, dt : Float32) : Vec3
+        pos + vel * dt
+      end
+
+      def integrate_verlet(pos : Vec3, vel : Vec3, accel : Vec3, dt : Float32) : Vec3
+        pos + vel * dt + accel * (0.5 * dt * dt)
+      end
+
+      def apply_linear_drag(vel : Vec3, drag : Float32, dt : Float32) : Vec3
+        vel * max(0.0, 1.0 - drag * dt)
+      end
+
+      def attract_point(pos : Vec3, target : Vec3, strength : Float32, radius : Float32) : Vec3
+        diff = target - pos
+        dist = max(length(diff), 0.0001)
+        atten = clamp(1.0 - dist / max(radius, 0.0001), 0.0, 1.0)
+        (diff / dist) * (strength * atten * atten)
+      end
+
+      def vortex_force_3d(pos : Vec3, center : Vec3, strength : Float32, radius : Float32) : Vec3
+        diff = center - pos
+        dist = max(length(diff), 0.0001)
+        atten = clamp(1.0 - dist / max(radius, 0.0001), 0.0, 1.0)
+        dir = diff / dist
+        tangent = vec3(-dir.z, 0.0, dir.x)
+        (tangent + dir * 0.25) * (strength * atten)
+      end
+
+      def bounce_plane(pos : Vec3, vel : Vec3, plane_normal : Vec3, plane_d : Float32, restitution : Float32) : Vec3
+        dist = dot(pos, plane_normal) - plane_d
+        if dist < 0.0
+          reflect(vel, plane_normal) * restitution
+        else
+          vel
+        end
+      end
+
+      def wrap_box_3d(pos : Vec3, box_min : Vec3, box_max : Vec3) : Vec3
+        span = max(box_max - box_min, vec3(0.0001, 0.0001, 0.0001))
+        box_min + mod(pos - box_min + span, span)
+      end
+    CR
+
     REGISTRY = {
       "math"            => MATH_LIB,
       "noise"           => NOISE_LIB,
@@ -352,6 +396,7 @@ module CrShader
       "color_spaces"    => COLOR_SPACES_LIB,
       "atmosphere"      => ATMOSPHERE_LIB,
       "glitch"          => GLITCH_LIB,
+      "particles"       => PARTICLES_LIB,
     }
 
     def self.load_module(mod_name : String) : Array(Crystal::Def)

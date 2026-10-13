@@ -15,7 +15,7 @@ layout(push_constant, std430) uniform FlowParams {
 } flow_params;
 
 void main() {
-	float idx = gl_GlobalInvocationID.x;
+	uint idx = gl_GlobalInvocationID.x;
 	if ((idx >= flow_params.particle_count)) {
 		return;
 	}

@@ -13,6 +13,7 @@ module CrShader
       ScreenSpaceMesh
       ScreenSpaceCanvas
       CompositorEffect
+      ComputeParticles
       MaterialHost
     end
 
@@ -46,6 +47,7 @@ module CrShader
                    when NodeType::ScreenSpaceMesh   then "MeshInstance3D"
                    when NodeType::ScreenSpaceCanvas then "CanvasLayer"
                    when NodeType::CompositorEffect  then "CompositorEffect"
+                   when NodeType::ComputeParticles  then "Node3D"
                    when NodeType::MaterialHost      then "Node"
                    end
 
@@ -73,6 +75,8 @@ module CrShader
         emit_screenspace_canvas_lifecycle(io, shader_path)
       when NodeType::CompositorEffect
         emit_compositor_effect_lifecycle(io, shader_path, program)
+      when NodeType::ComputeParticles
+        emit_compute_particles_lifecycle(io, shader_path, program)
       when NodeType::MaterialHost
         emit_material_host_lifecycle(io, shader_path)
       end
@@ -229,6 +233,40 @@ LIFECYCLE
 LIFECYCLE
     end
 
+    private def self.emit_compute_particles_lifecycle(io : IO, shader_path : String, program : ShaderProgram? = nil) : Void
+      local_x = program ? program.compute_layout.x : 64
+      io.puts <<-LIFECYCLE
+    @[Export]
+    property particle_count : Int32 = 1024
+
+    @[Export]
+    property gravity : Vector3 = Vector3.new(0.0_f32, -9.8_f32, 0.0_f32)
+
+    @[Export(range: 0.0_f32..1.0_f32, step: 0.01_f32)]
+    property drag : Float32 = 0.05_f32
+
+    @compute_helper : ComputeHelper? = nil
+    @particle_buffer_rid : Int64 = 0_i64
+
+    def _ready : Void
+      setup_compute_particles
+    end
+
+    def setup_compute_particles : Void
+      helper = ComputeHelper.new
+      @compute_helper = helper
+      byte_size = @particle_count * 48
+      @particle_buffer_rid = helper.create_storage_buffer(byte_size, binding: 0)
+    end
+
+    def _process(delta : Float64) : Void
+      if helper = @compute_helper
+        helper.dispatch_1d(@particle_count, #{local_x})
+      end
+    end
+LIFECYCLE
+    end
+
     private def self.emit_material_host_lifecycle(io : IO, shader_path : String) : Void
       io.puts <<-LIFECYCLE
     def _ready : Void
@@ -238,7 +276,7 @@ LIFECYCLE
     end
 
     private def self.emit_parameter_forwarding(io : IO, uniforms : Array(UniformDecl), node_type : NodeType) : Void
-      return if node_type == NodeType::CompositorEffect
+      return if node_type == NodeType::CompositorEffect || node_type == NodeType::ComputeParticles
 
       mat_getter = case node_type
                    when NodeType::ScreenSpaceMesh
