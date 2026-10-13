@@ -1,11 +1,14 @@
 # CRShader
 
-[![Crystal](https://img.shields.io/badge/Crystal-1.20+-black.svg?style=flat&logo=crystal)](https://crystal-lang.org)
-[![CRShader](https://img.shields.io/badge/CRShader-0.1.5-blueviolet.svg?style=flat)](https://github.com/sol-vin/crshader/releases)
-[![Godot](https://img.shields.io/badge/Godot-4.8+-blue.svg?style=flat&logo=godotengine)](https://godotengine.org)
-[![Docs](https://img.shields.io/badge/Docs-CRShader%20Language-blueviolet.svg?style=flat)](https://sol-vin.github.io/crshader/)
-[![Benchmarks](https://img.shields.io/badge/Benchmarks-Interactive%20Report-success.svg?style=flat)](https://sol-vin.github.io/crshader/benchmarks.html)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+<!-- carbon:badges -->
+[![CI](https://github.com/sol-vin/crshader/actions/workflows/ci.yml/badge.svg)](https://github.com/sol-vin/crshader/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-0.1.41-blue.svg)](https://github.com/sol-vin/crshader/releases)
+[![Crystal](https://img.shields.io/badge/crystal-%3E%3D%201.20.0-black.svg)](https://crystal-lang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Godot](https://img.shields.io/badge/Godot-4.8+-478CBF.svg?logo=godotengine)](https://godotengine.org)
+[![Docs](https://img.shields.io/badge/Docs-CRShader%20Language-blueviolet.svg)](https://sol-vin.github.io/crshader/)
+[![Benchmarks](https://img.shields.io/badge/Benchmarks-Interactive%20Report-success.svg)](https://sol-vin.github.io/crshader/benchmarks.html)
+<!-- /carbon:badges -->
 
 **CRShader** is a high-performance shader trans-compiler and live runtime development toolchain for **Godot Engine 4.8+**, powered by Crystal and [Lapis](https://github.com/sol-vin/lapis). It introduces a declarative, type-safe Crystal shader DSL that transpiles down to optimized Godot GDShader (4.x) and GLSL compute kernels with native machine speed (~1.1ms transpilation, >100,000 LOC/s).
 

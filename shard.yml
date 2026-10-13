@@ -1,13 +1,22 @@
 name: crshader
-version: 0.1.19
+version: 0.1.41
 authors:
   - Developer <developer@example.com>
 license: MIT
+crystal: ">= 1.20.0"
 
 dependencies:
   lapis:
     github: sol-vin/lapis
     branch: 4.8-dev7
+
+development_dependencies:
+  carbon:
+    github: sol-vin/carbon
+    branch: main
+  jasper:
+    github: sol-vin/jasper
+    branch: main
 
 targets:
   crshader:
@@ -18,3 +27,7 @@ targets:
     main: examples/shader_viewer/src/main.cr
   sandbox:
     main: examples/shader_sandbox/src/main.cr
+  carbon:
+    main: lib/carbon/src/carbon/cli.cr
+  jasper:
+    main: lib/jasper/src/jasper_cli.cr

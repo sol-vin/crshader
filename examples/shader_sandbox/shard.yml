@@ -6,7 +6,8 @@ license: MIT
 
 dependencies:
   lapis:
-    path: ../../../
+    github: sol-vin/lapis
+    branch: 4.8-dev7
   crshader:
     path: ../../
 

@@ -28,6 +28,8 @@ examples/**/addons/crystal_integration/
 # Crystal dependencies
 lib/
 shard.lock
+shard.override.yml
+*.override.yml
 /docs/
 
 # Test artifacts

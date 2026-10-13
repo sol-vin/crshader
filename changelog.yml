@@ -1,0 +1,97 @@
+---
+settings:
+  title: CARBON CHANGELOG
+  output_file: CHANGELOG.md
+  auto_link_github: true
+  categories:
+    breaking:
+      title: "\U0001F4A5 Breaking Changes"
+      bullet: ▲
+    features:
+      title: ✨ Features & Improvements
+      bullet: ✦
+    fixes:
+      title: "\U0001F41B Bug Fixes"
+      bullet: ✓
+    perf:
+      title: ⚡ Performance Optimizations
+      bullet: "\U0001F680"
+    docs:
+      title: "\U0001F4DA Documentation"
+      bullet: "\U0001F4D6"
+    maintenance:
+      title: "\U0001F6E0️ Chores & Tooling"
+      bullet: •
+releases:
+- version: 0.1.41
+  date: "2026-10-12"
+  status: active
+  entries:
+  - type: chore
+    description: upgrade to Godot 4.8-dev7 and update workflow configurations
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 657d798
+    author: Ian Rash
+  - type: chore
+    description: upgrade to Lapis 4.8-dev7, adopt Carbon & Jasper tooling, and modernize
+      CI workflows
+    bullet: •
+    badge: '[LAPIS]'
+    hash: a29bf46
+    author: Ian Rash
+- version: 0.1.40
+  date: "2026-10-12"
+  status: released
+  entries:
+  - type: chore
+    description: upgrade to Godot 4.8-dev7 and update workflow configurations
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 657d798
+    author: Ian Rash
+  - type: chore
+    description: upgrade to Lapis 4.8-dev7, adopt Carbon & Jasper tooling, and modernize
+      CI workflows
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 107699c
+    author: Ian Rash
+- version: 0.1.39
+  date: "2026-10-12"
+  status: released
+  entries:
+  - type: chore
+    description: upgrade to Godot 4.8-dev7 and update workflow configurations
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 657d798
+    author: Ian Rash
+  - type: chore
+    description: upgrade to Lapis 4.8-dev7, adopt Carbon & Jasper tooling, and modernize
+      CI workflows
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 107699c
+    author: Ian Rash
+- version: 0.1.19
+  date: "2026-10-12"
+  status: released
+  entries:
+  - type: chore
+    description: upgrade to Godot 4.8-dev7 and update workflow configurations
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 657d798
+    author: Ian Rash
+- version: 0.1.38
+  date: "2026-10-12"
+  status: released
+  summary: Initial release
+  entries:
+  - type: chore
+    description: upgrade to Godot 4.8-dev7 and update workflow configurations
+    bullet: •
+    badge: '[LAPIS]'
+    hash: 657d798
+    author: Ian Rash

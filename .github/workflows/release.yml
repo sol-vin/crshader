@@ -76,13 +76,13 @@ jobs:
 
           if [ -n "$INPUT_TAG" ]; then
             TAG="$INPUT_TAG"
-            TITLE="Release $TAG"
+            TITLE="CRShader $TAG"
           elif [ "$REF_TYPE" = "tag" ]; then
             TAG="$REF_NAME"
-            TITLE="Release $TAG"
+            TITLE="CRShader $TAG"
           else
             TAG="v$SHARD_VER"
-            TITLE="Release $TAG"
+            TITLE="CRShader $TAG"
           fi
 
           echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
@@ -333,16 +333,27 @@ jobs:
       - name: Configure Godot Executable
         shell: pwsh
         run: |
-          $candidate = $env:GODOT4
-          if (-not $candidate) { $candidate = $env:GODOT4_BIN }
-          if (-not $candidate) { $candidate = $env:GODOT }
-          if ($candidate) {
-            $candidate = $candidate -replace '^/([a-zA-Z])/', '$1:/'
-            $mainCand = $candidate -replace '(_console|\.console)\.exe$', '.exe'
-            if (Test-Path $mainCand) { $candidate = $mainCand }
+          # 1. Search for actual Godot GUI executable (>10MB, excluding console wrapper)
+          $godotCandidate = Get-ChildItem -Path "$env:RUNNER_TEMP", "$env:USERPROFILE", "$env:GITHUB_WORKSPACE/..", "." -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*godot*" -and $_.Name -notlike "*_console*" -and $_.Name -notlike "*.console*" -and $_.Length -gt 10MB } |
+            Select-Object -First 1
+
+          if (-not $godotCandidate -and $env:GODOT4) {
+            $cand = $env:GODOT4 -replace '^/([a-zA-Z])/', '$1:/'
+            $mainCand = $cand -replace '(_console|\.console)\.exe$', '.exe'
+            if (Test-Path $mainCand) { $godotCandidate = Get-Item $mainCand }
+            elseif (Test-Path $cand) { $godotCandidate = Get-Item $cand }
           }
-          if ($candidate -and (Test-Path $candidate)) {
-            Copy-Item -Path $candidate -Destination "./godot.exe" -Force
+          if (-not $godotCandidate -and $env:GODOT4_BIN) {
+            $cand2 = $env:GODOT4_BIN -replace '^/([a-zA-Z])/', '$1:/'
+            $mainCand2 = $cand2 -replace '(_console|\.console)\.exe$', '.exe'
+            if (Test-Path $mainCand2) { $godotCandidate = Get-Item $mainCand2 }
+            elseif (Test-Path $cand2) { $godotCandidate = Get-Item $cand2 }
+          }
+
+          if ($godotCandidate) {
+            Write-Host "Found Godot engine binary: $($godotCandidate.FullName) ($([math]::Round($godotCandidate.Length / 1MB, 2)) MB)"
+            Copy-Item $godotCandidate.FullName ./godot.exe -Force
           } else {
             $cmdCandidate = Get-Command godot.exe -ErrorAction SilentlyContinue
             if ($cmdCandidate) {
@@ -354,7 +365,16 @@ jobs:
               }
             }
           }
-          ./godot.exe --version
+          if (Test-Path ./godot.exe) {
+            $godotExePath = (Resolve-Path "./godot.exe").Path
+            "GODOT4=$godotExePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "GODOT4_BIN=$godotExePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "GODOT=$godotExePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Host "Configured Godot engine at: $godotExePath"
+          }
+          $currPath = (Get-Location).Path
+          $currPath | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          ./godot.exe --version || true
       - name: Ensure Lapis CLI & Bridge
         shell: pwsh
         run: |
@@ -557,27 +577,42 @@ jobs:
       - name: Configure Godot Executable
         shell: pwsh
         run: |
-          $candidate = $env:GODOT4
-          if (-not $candidate) { $candidate = $env:GODOT4_BIN }
-          if (-not $candidate) { $candidate = $env:GODOT }
-          if ($candidate) {
-            $candidate = $candidate -replace '^/([a-zA-Z])/', '$1:/'
-            $mainCand = $candidate -replace '(_console|\.console)\.exe$', '.exe'
-            if (Test-Path $mainCand) { $candidate = $mainCand }
+          # 1. Search for actual Godot GUI executable (>10MB, excluding console wrapper)
+          $godotCandidate = Get-ChildItem -Path "$env:RUNNER_TEMP", "$env:USERPROFILE", "$env:GITHUB_WORKSPACE/..", "." -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*godot*" -and $_.Name -notlike "*_console*" -and $_.Name -notlike "*.console*" -and $_.Length -gt 10MB } |
+            Select-Object -First 1
+
+          if (-not $godotCandidate -and $env:GODOT4) {
+            $cand = $env:GODOT4 -replace '^/([a-zA-Z])/', '$1:/'
+            $mainCand = $cand -replace '(_console|\.console)\.exe$', '.exe'
+            if (Test-Path $mainCand) { $godotCandidate = Get-Item $mainCand }
+            elseif (Test-Path $cand) { $godotCandidate = Get-Item $cand }
           }
-          if ($candidate -and (Test-Path $candidate)) {
-            Copy-Item -Path $candidate -Destination "./godot.exe" -Force
+          if (-not $godotCandidate -and $env:GODOT4_BIN) {
+            $cand2 = $env:GODOT4_BIN -replace '^/([a-zA-Z])/', '$1:/'
+            $mainCand2 = $cand2 -replace '(_console|\.console)\.exe$', '.exe'
+            if (Test-Path $mainCand2) { $godotCandidate = Get-Item $mainCand2 }
+            elseif (Test-Path $cand2) { $godotCandidate = Get-Item $cand2 }
+          }
+
+          if ($godotCandidate) {
+            Write-Host "Found Godot engine binary: $($godotCandidate.FullName) ($([math]::Round($godotCandidate.Length / 1MB, 2)) MB)"
+            Copy-Item $godotCandidate.FullName ./godot.exe -Force
+            $godotExePath = (Resolve-Path "./godot.exe").Path
+            "GODOT4=$godotExePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "GODOT4_BIN=$godotExePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "GODOT=$godotExePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Host "Configured Godot engine at: $godotExePath"
           } else {
+            Write-Host "Searching system PATH for godot.exe..."
             $cmdCandidate = Get-Command godot.exe -ErrorAction SilentlyContinue
             if ($cmdCandidate) {
               Copy-Item $cmdCandidate.Source ./godot.exe -Force
-            } else {
-              $found = Get-ChildItem -Path "$env:RUNNER_TEMP", "$env:USERPROFILE", "$env:GITHUB_WORKSPACE/.." -Recurse -Filter "Godot*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "console" } | Select-Object -First 1
-              if ($found) {
-                Copy-Item -Path $found.FullName -Destination "./godot.exe" -Force
-              }
             }
           }
+          $currPath = (Get-Location).Path
+          $currPath | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          ./godot.exe --version || true
       - name: Download Core Binaries
         uses: actions/download-artifact@v4
         with:
@@ -586,11 +621,9 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path "./godot.exe") {
-            try {
-              ./godot.exe --headless --rendering-driver opengl3 --path . --quit
-            } catch {
-              Write-Host "Godot smoke test exited with code $LASTEXITCODE"
-            }
+            Write-Host "Executing synchronous headless Godot smoke test..."
+            $proc = Start-Process -FilePath "./godot.exe" -ArgumentList @("--headless", "--rendering-driver", "opengl3", "--path", ".", "--quit") -Wait -NoNewWindow -PassThru
+            Write-Host "Smoke test completed with exit code: $($proc.ExitCode)"
           }
 
   test-engine-macos:
@@ -1093,6 +1126,11 @@ jobs:
           EOF
           sed -i "s/\${ADDON_NAME}/$ADDON_NAME/g" release_body.md
           sed -i "s/\${GODOT_VER}/$GODOT_VER/g" release_body.md
+          if [ -f "CHANGELOG.md" ]; then
+            echo "" >> release_body.md
+            echo "### 📝 Changelog" >> release_body.md
+            cat CHANGELOG.md >> release_body.md
+          fi
 
       - name: Publish Release Assets
         uses: softprops/action-gh-release@v2
@@ -1122,7 +1160,7 @@ jobs:
   deploy-docs:
     name: Deploy Docs & Benchmarks to GitHub Pages
     needs: [init-release, finalize-release]
-    if: always() && !cancelled() && needs.finalize-release.result == 'success'
+    if: always() && !cancelled() && needs.finalize-release.result == 'success' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 15
@@ -1235,6 +1273,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p docs
+          shards build jasper || true
+          if [ -f "bin/jasper" ]; then
+            ./bin/jasper build || true
+          fi
           if [ -f "bin/lapis" ]; then
             ./bin/lapis docs -p . -e src/crshader.cr --github=sol-vin/crshader || ./bin/lapis docs --github=sol-vin/crshader || true
           else

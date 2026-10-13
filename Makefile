@@ -31,6 +31,8 @@ endif
 
 ENTRY           ?= src/main.cr
 LAPIS           ?= $(if $(wildcard ./bin/lapis$(EXE_EXT)),./bin/lapis$(EXE_EXT),$(if $(wildcard ../bin/lapis$(EXE_EXT)),../bin/lapis$(EXE_EXT),$(if $(wildcard ../../bin/lapis$(EXE_EXT)),../../bin/lapis$(EXE_EXT),$(if $(wildcard ./lib/lapis/bin/lapis$(EXE_EXT)),./lib/lapis/bin/lapis$(EXE_EXT),lapis$(EXE_EXT)))))
+CARBON          ?= $(if $(wildcard ./bin/carbon$(EXE_EXT)),./bin/carbon$(EXE_EXT),$(if $(wildcard ../bin/carbon$(EXE_EXT)),../bin/carbon$(EXE_EXT),carbon$(EXE_EXT)))
+JASPER          ?= $(if $(wildcard ./bin/jasper$(EXE_EXT)),./bin/jasper$(EXE_EXT),$(if $(wildcard ../bin/jasper$(EXE_EXT)),../bin/jasper$(EXE_EXT),jasper$(EXE_EXT)))
 GAME_LIB        = $(ADDON_BIN_DIR)/game.$(SO_EXT)
 BRIDGE_SRC      = ../bin/crystal_bridge.$(SO_EXT)
 SOURCE_DIR      = $(if $(wildcard ../src),../src,lib)
@@ -105,15 +107,16 @@ setup_hooks setup-hooks:
 	@echo [Git] Enabled pre-commit version auto-increment hook (.githooks/pre-commit)
 
 bump_version bump-version bump:
-	@sh .githooks/pre-commit
+	@if [ -f "$(CARBON)" ]; then $(CARBON) bump; else sh .githooks/pre-commit; fi
 
 tag release_tag release-tag:
-	@VER=$$(awk '/^version:/ {print $$2}' shard.yml 2>/dev/null | tr -d ' "\r\n'); \
+	@if [ -f "$(CARBON)" ]; then $(CARBON) tag $(if $(TAG),$(TAG),) --push; else \
+	VER=$$(awk '/^version:/ {print $$2}' shard.yml 2>/dev/null | tr -d ' "\r\n'); \
 	if [ -z "$$VER" ]; then VER="0.1.0"; fi; \
 	TAG=$${TAG:-v$$VER}; \
 	echo "Tagging release $$TAG..."; \
 	git tag -a "$$TAG" -m "Release $$TAG" && \
-	echo "Release tag '$$TAG' created successfully! Push it to trigger release with: git push origin $$TAG"
+	echo "Release tag '$$TAG' created successfully! Push it to trigger release with: git push origin $$TAG"; fi
 
 viewer: all
 	@echo [CRShader] Launching interactive Shader Viewer...
@@ -156,6 +159,8 @@ test spec:
 	@crystal spec
 
 docs:
+	@echo [CRShader] Compiling documentation classes with Jasper...
+	@if [ -f "$(JASPER)" ]; then $(JASPER) build; fi
 	@echo [CRShader] Generating HTML API documentation...
 	@$(LAPIS) docs -p . -e src/crshader.cr --github=sol-vin/crshader
 

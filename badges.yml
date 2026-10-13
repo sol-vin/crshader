@@ -1,0 +1,27 @@
+---
+settings:
+  target_file: README.md
+  tag: carbon:badges
+  style: flat
+  layout: inline
+badges:
+- type: ci
+- type: version
+- type: crystal
+- type: license
+- type: custom
+  label: Godot
+  message: 4.8+
+  color: 478CBF
+  logo: godotengine
+  url: https://godotengine.org
+- type: custom
+  label: Docs
+  message: CRShader Language
+  color: blueviolet
+  url: https://sol-vin.github.io/crshader/
+- type: custom
+  label: Benchmarks
+  message: Interactive Report
+  color: success
+  url: https://sol-vin.github.io/crshader/benchmarks.html
