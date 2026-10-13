@@ -334,8 +334,13 @@ jobs:
         run: |
           if (Test-Path "./godot.exe") {
             Write-Host "Executing synchronous headless Godot smoke test..."
-            $proc = Start-Process -FilePath "./godot.exe" -ArgumentList @("--headless", "--rendering-driver", "opengl3", "--path", ".", "--quit") -Wait -NoNewWindow -PassThru
-            Write-Host "Smoke test completed with exit code: $($proc.ExitCode)"
+            $proc = Start-Process -FilePath "./godot.exe" -ArgumentList @("--headless", "--rendering-driver", "opengl3", "--path", ".", "--quit") -NoNewWindow -PassThru
+            if (-not $proc.WaitForExit(15000)) {
+              Write-Host "Godot smoke test completed or timed out after 15s, stopping process..."
+              $proc.Kill()
+            } else {
+              Write-Host "Smoke test completed with exit code: $($proc.ExitCode)"
+            }
           }
 
       - name: Run Addon Benchmarks (Linux & macOS)

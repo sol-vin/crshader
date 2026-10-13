@@ -10,7 +10,7 @@ module CrShader
   # Loads .crshader files into CRShader (which inherits natively from Shader).
   # Compiles transparently in-memory without polluting the project file structure.
   @[Tool]
-  node ResourceFormatLoaderCRShader < ResourceFormatLoader do
+  node ResourceFormatLoaderCRShader < Godot::ResourceFormatLoader do
     @@instance : ResourceFormatLoaderCRShader? = nil
     @@registered : Bool = false
 
@@ -42,10 +42,6 @@ module CrShader
         r_loader.remove_resource_format_loader(loader) rescue (r_loader.call("remove_resource_format_loader", loader) rescue nil)
       end
       loader.destroy rescue nil if loader.alive?
-    end
-
-    def initialize(pointer : Void* = Pointer(Void).null)
-      super(pointer)
     end
 
     def self.resolve_file_path(target_path : String) : String
@@ -115,7 +111,7 @@ module CrShader
   # ResourceFormatSaverCRShader - Transparent Saver for .crshader Files
   # =============================================================================
   @[Tool]
-  node ResourceFormatSaverCRShader < ResourceFormatSaver do
+  node ResourceFormatSaverCRShader < Godot::ResourceFormatSaver do
     @@instance : ResourceFormatSaverCRShader? = nil
     @@registered : Bool = false
 
@@ -147,10 +143,6 @@ module CrShader
         r_saver.remove_resource_format_saver(saver) rescue (r_saver.call("remove_resource_format_saver", saver) rescue nil)
       end
       saver.destroy rescue nil if saver.alive?
-    end
-
-    def initialize(pointer : Void* = Pointer(Void).null)
-      super(pointer)
     end
 
     def self._godot_has_virtual_method(method_name : String) : Bool

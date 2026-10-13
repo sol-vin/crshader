@@ -13,7 +13,7 @@ module CrShader
   # Can be assigned directly to ShaderMaterial, CanvasItem, MeshInstance3D, etc.
   # Does not pollute the project file structure with loose .gdshader files.
   @[Tool]
-  node CRShader < Shader do
+  node CRShader < Godot::Shader do
     @[Export]
     property crshader_source : String = ""
 
@@ -21,10 +21,6 @@ module CrShader
     property shader_target : String = "gdshader"
 
     property file_path : String = ""
-
-    def initialize(pointer : Void* = Pointer(Void).null)
-      super(pointer)
-    end
 
     def set_crshader_source(source : String) : Void
       @crshader_source = source
