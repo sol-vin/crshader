@@ -44,6 +44,16 @@ module CrShader
       loader.destroy rescue nil if loader.alive?
     end
 
+    def self.new(pointer : Void* = Pointer(Void).null) : self
+      inst = allocate
+      inst.initialize(pointer)
+      inst
+    end
+
+    def initialize(pointer : Void* = Pointer(Void).null)
+      super(pointer)
+    end
+
     def self.resolve_file_path(target_path : String) : String
       return "" if target_path.empty?
       if target_path.starts_with?("res://") || target_path.starts_with?("user://")
@@ -143,6 +153,16 @@ module CrShader
         r_saver.remove_resource_format_saver(saver) rescue (r_saver.call("remove_resource_format_saver", saver) rescue nil)
       end
       saver.destroy rescue nil if saver.alive?
+    end
+
+    def self.new(pointer : Void* = Pointer(Void).null) : self
+      inst = allocate
+      inst.initialize(pointer)
+      inst
+    end
+
+    def initialize(pointer : Void* = Pointer(Void).null)
+      super(pointer)
     end
 
     def self._godot_has_virtual_method(method_name : String) : Bool

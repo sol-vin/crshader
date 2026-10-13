@@ -22,6 +22,16 @@ module CrShader
 
     property file_path : String = ""
 
+    def self.new(pointer : Void* = Pointer(Void).null) : self
+      inst = allocate
+      inst.initialize(pointer)
+      inst
+    end
+
+    def initialize(pointer : Void* = Pointer(Void).null)
+      super(pointer)
+    end
+
     def set_crshader_source(source : String) : Void
       @crshader_source = source
       recompile
