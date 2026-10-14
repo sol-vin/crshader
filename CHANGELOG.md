@@ -1,4 +1,6 @@
 # CARBON CHANGELOG
+## [0.1.46] - 2026-10-13
+---
 ## [0.1.45] - 2026-10-13
 ### ✨ Features & Improvements
 - ✦ **[COMPUTE]** expand CRShader with Two-Tier Compute Shader Particle Simulation engine, declarative builder, std/particles library, and ComputeParticles node generator
