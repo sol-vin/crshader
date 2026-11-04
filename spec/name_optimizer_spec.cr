@@ -35,8 +35,8 @@ describe "CrShader::Optimizer::NameOptimizer" do
 
     # MUST NOT contain invalid double-underscore or ugly o_123 patterns
     frag_body.should_not contain("__")
-    frag_body.should_not match(/o_\d+/)
-    frag_body.should_not match(/o__\d+/)
+    (frag_body =~ /o_\d+/).should be_nil
+    (frag_body =~ /o__\d+/).should be_nil
   end
 
   it "preserves function parameters while renaming internal locals" do
