@@ -10,8 +10,8 @@ describe "CRShader Addon CI Workflow" do
     parsed = YAML.parse(content)
 
     jobs = parsed["jobs"].as_h
-    job = jobs[YAML::Any.new("build-and-test")].as_h
-    matrix = job[YAML::Any.new("strategy")].as_h[YAML::Any.new("matrix")].as_h[YAML::Any.new("include")].as_a
+    job = jobs[YAML::Any.new("test")].as_h
+    matrix = job[YAML::Any.new("strategy")].as_h[YAML::Any.new("matrix")].as_h[YAML::Any.new("os")].as_a
     matrix.size.should eq(3)
     content.includes?("4.8-beta2").should be_true
   end
