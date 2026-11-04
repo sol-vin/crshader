@@ -23,9 +23,19 @@ settings:
       title: "\U0001F6E0️ Chores & Tooling"
       bullet: •
 releases:
+- version: 0.1.48
+  date: "2026-11-04"
+  status: active
+  entries:
+  - type: chore
+    description: upgrade Lapis and Godot target to 4.8-beta1 (v0.1.11)
+    bullet: •
+    badge: '[DEPS]'
+    hash: 3a57bc2
+    author: Ian Rash
 - version: 0.1.47
   date: "2026-10-28"
-  status: active
+  status: released
   entries: []
 - version: 0.1.46
   date: "2026-10-13"

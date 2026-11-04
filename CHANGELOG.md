@@ -1,4 +1,9 @@
 # CARBON CHANGELOG
+## [0.1.48] - 2026-11-04
+### 🛠️ Chores & Tooling
+- • **[DEPS]** upgrade Lapis and Godot target to 4.8-beta1 (v0.1.11) ([`3a57bc2`](https://github.com/sol-vin/crshader/commit/3a57bc2))
+
+---
 ## [0.1.47] - 2026-10-28
 ---
 ## [0.1.46] - 2026-10-13
