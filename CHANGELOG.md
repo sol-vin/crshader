@@ -1,4 +1,14 @@
 # CARBON CHANGELOG
+## [0.1.53] - 2026-11-06
+### 🛠️ Chores & Tooling
+- • **[DEPS]** upgrade Lapis and Godot target to 4.8-beta1 (v0.1.11) ([`3a57bc2`](https://github.com/sol-vin/crshader/commit/3a57bc2))
+- • **[DEPS]** upgrade Lapis to Godot 4.8-beta2 ([`5678209`](https://github.com/sol-vin/crshader/commit/5678209))
+- • use GNU ld.bfd for Linux shared libraries and macOS arm64 Godot 4.8-beta2 fallback ([`f2e5d40`](https://github.com/sol-vin/crshader/commit/f2e5d40))
+- • **[SPEC]** update ci_workflow_spec and avoid match macro order sensitivity ([`0787b7d`](https://github.com/sol-vin/crshader/commit/0787b7d))
+- • **[SPEC]** align ci_workflow_spec with test matrix key ([`ec38ebd`](https://github.com/sol-vin/crshader/commit/ec38ebd))
+- • **[DEPS]** update lapis shard.lock to finalized 4.8-beta2 (56c198f) ([`0e5a4ad`](https://github.com/sol-vin/crshader/commit/0e5a4ad))
+
+---
 ## [0.1.52] - 2026-11-04
 ### 🛠️ Chores & Tooling
 - • **[DEPS]** upgrade Lapis and Godot target to 4.8-beta1 (v0.1.11) ([`3a57bc2`](https://github.com/sol-vin/crshader/commit/3a57bc2))
