@@ -13,6 +13,6 @@ describe "CRShader Addon CI Workflow" do
     job = jobs[YAML::Any.new("test")].as_h
     matrix = job[YAML::Any.new("strategy")].as_h[YAML::Any.new("matrix")].as_h[YAML::Any.new("os")].as_a
     matrix.size.should eq(3)
-    content.includes?("4.8-beta3").should be_true
+    content.includes?("4.8-beta4").should be_true
   end
 end
