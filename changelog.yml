@@ -23,9 +23,128 @@ settings:
       title: "\U0001F6E0️ Chores & Tooling"
       bullet: •
 releases:
-- version: 0.1.64
+- version: 0.1.65
   date: "2026-11-21"
   status: active
+  entries:
+  - type: chore
+    description: upgrade Lapis and Godot target to 4.8-beta1 (v0.1.11)
+    bullet: •
+    badge: '[DEPS]'
+    hash: 3a57bc2
+    author: Ian Rash
+  - type: chore
+    description: upgrade Lapis to Godot 4.8-beta2
+    bullet: •
+    badge: '[DEPS]'
+    hash: "5678209"
+    author: Ian Rash
+  - type: ci
+    description: use GNU ld.bfd for Linux shared libraries and macOS arm64 Godot 4.8-beta2
+      fallback
+    bullet: •
+    hash: f2e5d40
+    author: Ian Rash
+  - type: test
+    description: update ci_workflow_spec and avoid match macro order sensitivity
+    bullet: •
+    badge: '[SPEC]'
+    hash: 0787b7d
+    author: Ian Rash
+  - type: test
+    description: align ci_workflow_spec with test matrix key
+    bullet: •
+    badge: '[SPEC]'
+    hash: ec38ebd
+    author: Ian Rash
+  - type: chore
+    description: update lapis shard.lock to finalized 4.8-beta2 (56c198f)
+    bullet: •
+    badge: '[DEPS]'
+    hash: 0e5a4ad
+    author: Ian Rash
+  - type: chore
+    description: update Lapis dependency to v0.2.3 (Godot 4.8-beta2)
+    bullet: •
+    badge: '[DEPS]'
+    hash: f801ad0
+    author: Ian Rash
+  - type: chore
+    description: lock lapis v0.3.7 on 4.8-beta3
+    bullet: •
+    badge: '[DEPS]'
+    hash: 1ee7b4f
+    author: Ian Rash
+  - type: chore
+    description: lock lapis v0.4.1 on 4.8-beta4
+    bullet: •
+    badge: '[DEPS]'
+    hash: 042d709
+    author: Ian Rash
+  - type: feat
+    description: add outline & artist stdlibs, shader builder, variant cache, gdshaderinc
+      emitter, and spatial/compute interop
+    bullet: ✦
+    badge: '[DSL,STD]'
+    hash: c5a4ee4
+    author: Ian Rash
+  - type: fix
+    description: allow source_color hint on Sampler2D and Vec3 uniforms in Spatial
+      shaders
+    bullet: ✓
+    badge: '[VALIDATOR]'
+    hash: f00e5ac
+    author: Ian Rash
+  - type: fix
+    description: deduplicate gdshaderinc helpers, fix setter/return ternaries, struct
+      .color fields, and gdshaderinc varyings
+    bullet: ✓
+    badge: '[TRANSPILER]'
+    hash: f0a81e0
+    author: Ian Rash
+  - type: fix
+    description: emit varying before flat/smooth interpolation qualifier per Godot
+      4 grammar
+    bullet: ✓
+    badge: '[GDSHADER]'
+    hash: "975e249"
+    author: Ian Rash
+  - type: chore
+    description: sync compiled example shaders with v0.1.59 transpiler output
+    bullet: •
+    badge: '[EXAMPLES]'
+    hash: 01711e3
+    author: Ian Rash
+  - type: feat
+    description: add Godot 4.8 Shader Editor tab integration, emit_target multi-output
+      compilation, and crshader/addon entrypoint
+    bullet: ✦
+    badge: '[EDITOR]'
+    hash: ad76bd8
+    author: Ian Rash
+  - type: fix
+    description: emit native Godot 4 flat PackedColorArray floats in ColorPalette
+      .tres resources
+    bullet: ✓
+    badge: '[PALETTES]'
+    hash: 401f4d4
+    author: Ian Rash
+  - type: fix
+    description: normalize Windows backslashes before Dir.glob in ShaderEditorIntegration
+    bullet: ✓
+    badge: '[EDITOR]'
+    hash: b33a928
+    author: Ian Rash
+  - type: fix
+    description: prioritize explicit emit_target declarations before stem fallback
+      in find_companion_crshader
+    bullet: ✓
+    badge: '[EDITOR]'
+    hash: 3f37e6c
+    author: Ian Rash
+- version: 0.1.64
+  date: "2026-11-21"
+  status: released
   entries:
   - type: chore
     description: upgrade Lapis and Godot target to 4.8-beta1 (v0.1.11)

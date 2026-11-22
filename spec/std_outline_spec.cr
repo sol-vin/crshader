@@ -282,4 +282,53 @@ describe "CrShader std/outline Toolkit & Multi-Cue Outline Shaders" do
     comp_outputs[0][1].should eq(CrShader::ShaderTarget::GLSL)
     comp_outputs[0][2].starts_with?("#[compute]\n#version 450").should be_true
   end
+
+  it "highlights Crystal symbols, named arguments, commas, colons, ranges, members, and preprocessor directives with zero dark/black tokens" do
+    sample_lines = [
+      "emit_target \"outline.gdshader\", pattern_default_enabled: false",
+      "shader_type :spatial",
+      "render_mode :ambient_light_disabled, :depth_prepass_alpha, :blend_premul_alpha",
+      "feature :pattern_default_enabled, default: false",
+      "uniform outline_color_id : Int32 = 16, range: 0..253, step: 1",
+      "#include \"res://addons/outline_shader/shaders/outline_common.gdshaderinc\"",
+      "ALBEDO = s.color * Color.new(1.0_f32, 0.5_f32, 0.2_f32, 1.0_f32).rgb",
+      "# Section header comment",
+    ]
+
+    sample_lines.each do |ln|
+      spans = CrShader::Highlighter.highlight_crshader_line(ln)
+      spans.should_not be_empty
+      spans.each do |sp|
+        # Every span must have high-contrast dark-theme brightness (never black Color(0, 0, 0, 1))
+        (sp.r + sp.g + sp.b).should be >= 1.5_f32
+        sp.a.should eq(1.0_f32)
+      end
+    end
+
+    # Verify exact semantic token colors on the header lines from outline.crshader
+    l1 = CrShader::Highlighter.highlight_crshader_line("emit_target \"outline.gdshader\", pattern_default_enabled: false")
+    l1.find { |s| s.column == 0 }.not_nil!.r.should eq(CrShader::Highlighter::COLOR_KEYWORD[0])
+    l1.find { |s| s.column == 12 }.not_nil!.r.should eq(CrShader::Highlighter::COLOR_STRING[0])
+    # Comma at column 30 gets COLOR_PUNCT (Cool Silver, not black!)
+    comma_span = l1.find { |s| s.column == 30 }.not_nil!
+    {comma_span.r, comma_span.g, comma_span.b, comma_span.a}.should eq(CrShader::Highlighter::COLOR_PUNCT)
+    # `pattern_default_enabled:` at column 32 gets COLOR_NAMED_ARG (Sky Blue, including `:`)
+    narg_span = l1.find { |s| s.column == 32 }.not_nil!
+    {narg_span.r, narg_span.g, narg_span.b, narg_span.a}.should eq(CrShader::Highlighter::COLOR_NAMED_ARG)
+    # `false` at column 57 gets COLOR_LITERAL
+    lit_span = l1.find { |s| s.column == 57 }.not_nil!
+    {lit_span.r, lit_span.g, lit_span.b, lit_span.a}.should eq(CrShader::Highlighter::COLOR_LITERAL)
+
+    # `:spatial` at column 12 gets COLOR_SYMBOL (Bright Cyan, including `:`)
+    l2 = CrShader::Highlighter.highlight_crshader_line("shader_type :spatial")
+    sym_span = l2.find { |s| s.column == 12 }.not_nil!
+    {sym_span.r, sym_span.g, sym_span.b, sym_span.a}.should eq(CrShader::Highlighter::COLOR_SYMBOL)
+
+    # Range `0..253` splits into `0` (NUMBER), `..` (PUNCT), `253` (NUMBER)
+    l5 = CrShader::Highlighter.highlight_crshader_line("uniform outline_color_id : Int32 = 16, range: 0..253, step: 1")
+    zero_col = "uniform outline_color_id : Int32 = 16, range: ".size
+    {l5.find { |s| s.column == zero_col }.not_nil!.r, l5.find { |s| s.column == zero_col }.not_nil!.g}.should eq({CrShader::Highlighter::COLOR_NUMBER[0], CrShader::Highlighter::COLOR_NUMBER[1]})
+    {l5.find { |s| s.column == zero_col + 1 }.not_nil!.r, l5.find { |s| s.column == zero_col + 1 }.not_nil!.g}.should eq({CrShader::Highlighter::COLOR_PUNCT[0], CrShader::Highlighter::COLOR_PUNCT[1]})
+    {l5.find { |s| s.column == zero_col + 3 }.not_nil!.r, l5.find { |s| s.column == zero_col + 3 }.not_nil!.g}.should eq({CrShader::Highlighter::COLOR_NUMBER[0], CrShader::Highlighter::COLOR_NUMBER[1]})
+  end
 end

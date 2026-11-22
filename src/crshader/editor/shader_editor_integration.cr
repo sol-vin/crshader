@@ -201,7 +201,7 @@ module CrShader
             prev_edit.call("set_v_size_flags", 3_i64)
             prev_edit.call("set_gutters_draw_line_numbers", true)
             prev_edit.call("set_editable", false)
-            Highlighter.apply_to_code_edit(prev_edit)
+            Highlighter.apply_target_to_code_edit(prev_edit)
             pbox.call("add_child", prev_edit)
             @preview_edit = prev_edit
           end
@@ -250,6 +250,14 @@ module CrShader
         ed.call("tag_saved_version") rescue nil
       end
       compile_preview(sync_disk: false)
+    end
+
+    def source_code_edit : Godot::CodeEdit?
+      @source_edit
+    end
+
+    def preview_code_edit : Godot::CodeEdit?
+      @preview_edit
     end
 
     def get_source_text : String
