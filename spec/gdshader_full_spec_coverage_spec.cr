@@ -105,8 +105,8 @@ describe "GDShader & GLSL Full Specification Coverage" do
 
       code = compiler.compile(source)
       code.should contain("varying highp vec3 v_normal;")
-      code.should contain("flat varying mediump int v_cluster_id;")
-      code.should contain("smooth varying highp vec2 v_uv;")
+      code.should contain("varying flat mediump int v_cluster_id;")
+      code.should contain("varying smooth highp vec2 v_uv;")
     end
   end
 

@@ -228,10 +228,10 @@ module CrShader
       @program.varyings.each do |v|
         vtype = TypeInfo.resolve(v.type_name, @target)
         @symbol_table.register_global(v.name, vtype)
+        @io << "varying "
         if qual = v.qualifier
           @io << "#{qual} "
         end
-        @io << "varying "
         if prec = v.precision
           @io << "#{prec} "
         end
