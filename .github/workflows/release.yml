@@ -1494,6 +1494,8 @@ jobs:
           touch docs/.nojekyll
           test -s docs/index.html
           test -s docs/CrShader.html
+          test -s docs/CrShader/Docs/E_OUTPUT_COMPARISONS/A_SIDE_BY_SIDE_COMPARISONS.html
+          grep -q "jasper-comparison" docs/css/style.css
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3

@@ -434,6 +434,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          if [ -d "lib/lapis/tools/lapis/src" ]; then
+            echo "Building Lapis CLI from locked shard lib/lapis..."
+            crystal build lib/lapis/tools/lapis/src/lapis.cr -o bin/lapis --no-debug || true
+            chmod +x bin/lapis 2>/dev/null || true
+          fi
           if [ -f "bin/lapis" ]; then
             ./bin/lapis docs -p . --github=sol-vin/crshader
           else
@@ -441,6 +446,8 @@ jobs:
           fi
           test -s docs/index.html
           test -s docs/CrShader.html
+          test -s docs/CrShader/Docs/E_OUTPUT_COMPARISONS/A_SIDE_BY_SIDE_COMPARISONS.html
+          grep -q "jasper-comparison" docs/css/style.css
 
       - name: Run Addon Benchmarks (Windows)
         if: runner.os == 'Windows' && hashFiles('benchmarks/*.cr') != ''
