@@ -13,7 +13,7 @@ varying vec3 v_world_normal;
 void vertex() {
 	v_world_normal = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	float offset = (sin(((TIME * wave_speed) + (VERTEX.x * 2.0))) * wave_height);
-	VERTEX.y=((VERTEX.y + offset));
+	VERTEX.y = (VERTEX.y + offset);
 }
 
 void fragment() {

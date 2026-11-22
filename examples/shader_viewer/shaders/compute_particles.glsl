@@ -26,8 +26,8 @@ void main() {
 	vel = (vel + (params.gravity * params.delta_time));
 	pos = (pos + (vel * params.delta_time));
 	if ((pos.y < 0.0)) {
-		pos.y=(0.0);
-		vel.y=((-vel.y * 0.7));
+		pos.y = 0.0;
+		vel.y = (-vel.y * 0.7);
 	}
 	particle_buffer.positions[idx] = vec4(pos, 1.0);
 	velocity_buffer.velocities[idx] = vec4(vel, 0.0);

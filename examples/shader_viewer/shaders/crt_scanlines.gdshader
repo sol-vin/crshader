@@ -33,11 +33,11 @@ void fragment() {
 		px = (int(FRAGCOORD.x) % 3);
 		mask = vec3((1.0 - phosphor_strength), (1.0 - phosphor_strength), (1.0 - phosphor_strength));
 		if ((px == 0)) {
-			mask.r=((1.0 + phosphor_strength));
+			mask.r = (1.0 + phosphor_strength);
 		} else if ((px == 1)) {
-			mask.g=((1.0 + phosphor_strength));
+			mask.g = (1.0 + phosphor_strength);
 		} else {
-			mask.b=((1.0 + phosphor_strength));
+			mask.b = (1.0 + phosphor_strength);
 		}
 		col = (col * mask);
 		d = length((uv - vec2(0.5, 0.5)));

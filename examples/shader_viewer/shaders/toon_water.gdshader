@@ -37,7 +37,7 @@ void vertex() {
 	n_val += (value_noise(((p * 1.0) + ((TIME * 0.2) * speed))) * (1.0 / 1.0));
 	n_val += (value_noise(((p * 2.0) + ((TIME * 0.2) * speed))) * (1.0 / 2.0));
 	n_val += (value_noise(((p * 3.0) + ((TIME * 0.2) * speed))) * (1.0 / 3.0));
-	VERTEX.y=((VERTEX.y + (n_val * 0.2)));
+	VERTEX.y = (VERTEX.y + (n_val * 0.2));
 }
 
 void fragment() {

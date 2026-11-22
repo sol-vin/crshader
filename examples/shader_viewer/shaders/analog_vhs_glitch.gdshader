@@ -41,7 +41,7 @@ void fragment() {
 	float noise_bar_y = fract((TIME * tape_crease_speed));
 	float dist_to_bar = abs((uv.y - noise_bar_y));
 	float noise_factor = (smoothstep(0.05, 0.0, dist_to_bar) * 0.15);
-	jittered_uv.x=((jittered_uv.x + (noise_factor * rand(vec2(uv.y, TIME)))));
+	jittered_uv.x = (jittered_uv.x + (noise_factor * rand(vec2(uv.y, TIME))));
 	float col_r = texture(screen_tex, (jittered_uv + vec2(rgb_shift, 0.0))).r;
 	float col_g = texture(screen_tex, jittered_uv).g;
 	float col_b = texture(screen_tex, (jittered_uv - vec2(rgb_shift, 0.0))).b;

@@ -14,7 +14,7 @@ void vertex() {
 	vec4 clip_pos = ((PROJECTION_MATRIX * MODELVIEW_MATRIX) * vec4(VERTEX, 1.0));
 	vec2 ndc = (clip_pos.xy / clip_pos.w);
 	vec2 snapped_ndc = (floor((ndc * jitter_resolution)) / jitter_resolution);
-	clip_pos.xy=((snapped_ndc * clip_pos.w));
+	clip_pos.xy = (snapped_ndc * clip_pos.w);
 	POSITION = clip_pos;
 	v_clip_w = clip_pos.w;
 	if (affine_mapping) {

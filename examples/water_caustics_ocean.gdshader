@@ -48,7 +48,7 @@ void vertex() {
 	float t = (TIME * wave_speed);
 	float wave1 = (sin(((v_world_pos.x * wave_frequency) + t)) * wave_height);
 	float wave2 = ((cos((((v_world_pos.z * wave_frequency) * 0.8) + (t * 1.2))) * wave_height) * 0.6);
-	VERTEX.y=(((VERTEX.y + wave1) + wave2));
+	VERTEX.y = ((VERTEX.y + wave1) + wave2);
 }
 
 void fragment() {
