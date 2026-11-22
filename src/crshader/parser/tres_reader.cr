@@ -69,29 +69,38 @@ module CrShader
     end
 
     # Parses Godot 4 ColorPalette text resource (.tres)
-    # Extracts the PackedColorArray with type safety
+    # Supports both native Godot 4 flat `PackedColorArray(r, g, b, a, ...)` and legacy `Color(r, g, b, a)` entries.
     def self.parse_string(content : String) : TresData
       data = TresData.new
       target_slice = ""
       if m = content.match(/(?:^|\n)\s*colors\s*=\s*([^\n]+)/)
         target_slice = m[1]
-      elsif content.includes?("Color(")
+      elsif content.includes?("Color(") || content.includes?("PackedColorArray(")
         target_slice = content
       end
 
       if !target_slice.empty?
-        target_slice.scan(COLOR_REGEX) do |cm|
-          r = cm[1].to_f32? || 0.0_f32
-          g = cm[2].to_f32? || 0.0_f32
-          b = cm[3].to_f32? || 0.0_f32
-          a = cm[4]?.try(&.to_f32?) || 1.0_f32
-          data.colors << {r, g, b, a}
+        if target_slice.includes?("Color(")
+          target_slice.scan(COLOR_REGEX) do |cm|
+            r = cm[1].to_f32? || 0.0_f32
+            g = cm[2].to_f32? || 0.0_f32
+            b = cm[3].to_f32? || 0.0_f32
+            a = cm[4]?.try(&.to_f32?) || 1.0_f32
+            data.colors << {r, g, b, a}
+          end
+        elsif pm = target_slice.match(/PackedColorArray\(([^)]*)\)/)
+          floats = pm[1].split(',').compact_map { |tok| tok.strip.to_f32? }
+          i = 0
+          while i + 3 < floats.size
+            data.colors << {floats[i], floats[i + 1], floats[i + 2], floats[i + 3]}
+            i += 4
+          end
         end
       end
       data
     end
 
-    # Writes a Godot 4 ColorPalette .tres resource
+    # Writes a Godot 4 ColorPalette .tres resource using Godot 4's native flat PackedColorArray(r, g, b, a, ...) format
     def self.write_color_palette(path : String, colors : Array(Tuple(Float32, Float32, Float32, Float32))) : Bool
       dir = File.dirname(path)
       Dir.mkdir_p(dir) unless Dir.exists?(dir) || dir.empty? || dir == "."
@@ -102,7 +111,7 @@ module CrShader
       io << "colors = PackedColorArray("
       colors.each_with_index do |(r, g, b, a), idx|
         io << ", " if idx > 0
-        io << "Color(#{r.round(6)}, #{g.round(6)}, #{b.round(6)}, #{a.round(6)})"
+        io << "#{r.round(6)}, #{g.round(6)}, #{b.round(6)}, #{a.round(6)}"
       end
       io << ")\n"
 

@@ -44,6 +44,7 @@ describe "CrShader::TresReader (ColorPalette)" do
 
     ok = CrShader::TresReader.write_color_palette(temp_path, test_colors)
     ok.should be_true
+    File.read(temp_path).should_not contain("Color(")
 
     data = CrShader::TresReader.read(temp_path)
     data.should_not be_nil
