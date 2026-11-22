@@ -148,4 +148,10 @@ describe "CrShader Semantic Validator & Early Safety" do
       compiler.compile_source(source)
     end
   end
+
+  it "allows source_color hint on Sampler2D and Vec3 uniforms in Godot 4 Spatial shaders" do
+    valid_sampler_src = "shader_type :spatial\nsampler albedo_tex, hint: :source_color, filter: :linear_mipmap\ndef fragment\n  ALBEDO = texture(albedo_tex, UV).rgb\nend\n"
+    compiled = compiler.compile_source(valid_sampler_src)
+    compiled.should contain("uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;")
+  end
 end

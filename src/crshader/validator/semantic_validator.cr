@@ -149,15 +149,16 @@ module CrShader::Validator
 
         # 3. Hint validation
         u.hints.each do |hint|
-          # source_color only on Color, Vec4, or Array(Color)
+          # source_color on Color, Vec3, Vec4, Sampler*, or Array(Color)
           if hint == "source_color" || hint == "hint_color"
-            valid_color_type = type_str == "Color" || type_str == "Vec4" ||
-                               (u.is_array? && type_str == "Color") ||
+            valid_color_type = type_str == "Color" || type_str == "Vec4" || type_str == "Vec3" ||
+                               type_str.downcase.starts_with?("sampler") ||
+                               (u.is_array? && (type_str == "Color" || type_str == "Vec4" || type_str == "Vec3")) ||
                                type_str == "PackedColorArray"
             unless valid_color_type
               @context.error(
-                "Hint 'source_color' is only valid for Color or Vec4 uniforms, but uniform '#{u.name}' has type '#{type_str}'.",
-                tip: "Change uniform type to 'Color' or remove 'hint: :source_color'."
+                "Hint 'source_color' is only valid for Color or Vec4 uniforms (or Vec3/Sampler2D), but uniform '#{u.name}' has type '#{type_str}'.",
+                tip: "Change uniform type to 'Color' / 'Sampler2D' or remove 'hint: :source_color'."
               )
             end
           end
