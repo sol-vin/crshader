@@ -430,6 +430,18 @@ jobs:
         run: |
           crystal run benchmarks/example_bench.cr -- 5000 || true
 
+      - name: Verify Documentation Build (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if [ -f "bin/lapis" ]; then
+            ./bin/lapis docs -p . --github=sol-vin/crshader
+          else
+            crystal docs src/main.cr --output docs
+          fi
+          test -s docs/index.html
+          test -s docs/CrShader.html
+
       - name: Run Addon Benchmarks (Windows)
         if: runner.os == 'Windows' && hashFiles('benchmarks/*.cr') != ''
         shell: pwsh

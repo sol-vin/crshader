@@ -372,9 +372,6 @@ module CrShader
       end
     end
 
-    # =========================================================================
-    # Rich Syntax Highlighter Configuration
-    # =========================================================================
     private def setup_syntax_highlighter(edit : CodeEdit) : Void
       Highlighter.apply_to_code_edit(edit)
     end

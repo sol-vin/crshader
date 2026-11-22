@@ -1,47 +1,43 @@
 id: B_SHADER_STUDIO
-title: "CRShader Studio Dock Panel"
-summary: "Live split-screen editor dock, side-by-side GDShader preview, error diagnostics, and uniform controls."
+title: "Godot 4.8 Shader Editor Tab & CRShader Studio"
+summary: "Native editing inside Godot's built-in Shader Editor dock, multi-target emit_target syncing, and host addon integration."
 track: "03_editor_tooling"
 root_module: "CrShader::Docs"
 overview: |
-  CRShader Studio is an integrated bottom-dock editor panel in the Godot Editor. It provides a
-  split-pane workspace where developers can write CRShader DSL code on the left, see transpiled
-  GDShader or GLSL on the right, and tweak live uniforms without leaving the scene.
+  CRShader integrates directly into Godot 4.8's built-in bottom **Shader Editor** dock via
+  `CrShader::ShaderEditorIntegration` and `CrShader::CrShaderTabEditor`, while also retaining
+  `CrShader::CrShaderStudioPanel` for standalone showcase apps. Double-clicking any `.crshader`
+  file in the FileSystem dock or selecting it from the `🔮 CRShader` menu opens a split-pane
+  `.crshader` editor right inside the **Shader Editor** tab.
 related_sources:
-  - "bin/crshader/src/crshader/editor/studio_panel.cr"
-  - "bin/crshader/src/main.cr"
+  - "src/crshader/editor/shader_editor_integration.cr"
+  - "src/crshader/addon.cr"
+  - "src/crshader/editor/shader_studio.cr"
 sections:
   - id: topic_01_dock_layout
-    title: "Split-Screen Dock Layout"
-    summary: "Overview of the studio workspace, toolbar controls, and inspection panes."
+    title: "Native Shader Editor Tab Integration"
+    summary: "Editing .crshader files directly inside Godot 4.8's Shader Editor dock."
     content: |
-      CRShader Studio is automatically registered as a bottom-panel dock when the CRShader addon
-      is enabled in Godot. The interface is organized into three primary sections:
+      When `res://addons/crshader/plugin.cfg` is enabled (either standalone or compiled into a single-GC
+      Lapis host via `require "crshader/addon"`), `CrShaderPlugin` hooks into Godot's **Shader Editor**:
 
-      1. **Left Editor Pane**: A full-featured text editor with syntax highlighting, line numbers, and auto-indent.
-      2. **Right Preview Pane**: Read-only display of the generated GDShader 4.x or GLSL compute code.
-      3. **Bottom Diagnostic Console**: Real-time error messages, warning flags, and compilation timestamps.
+      1. **In-Place `.crshader` Tabs**: Opening a `.crshader` resource upgrades its Shader Editor tab slot with `CrShaderTabEditor`, preventing raw GDShader parse errors on Crystal DSL syntax.
+      2. **Toolbar Menu & Companion Jump**: Adds a `🔮 CRShader` dropdown to open or bulk-compile all project `.crshader` files, plus a contextual `🔮 Edit <name>.crshader` button whenever viewing a generated `.gdshader`, `.gdshaderinc`, or `.glsl` file.
+      3. **Live Split Preview & Trait Inserter**: Displays real-time transpiled output on the right (including multi-target `emit_target` previews) with `Ctrl+S` disk and in-memory `ResourceLoader` hot-reload.
     examples:
       - |
-        ```
-        +-----------------------------------+-----------------------------------+
-        | CRShader Source (.crshader)       | Transpiled Output (.gdshader)     |
-        +-----------------------------------+-----------------------------------+
-        | shader_type :canvas_item          | shader_type canvas_item;          |
-        | uniform tint : vec4               | uniform vec4 tint;                |
-        | stage :fragment do                | void fragment() {                 |
-        |   COLOR = texture(TEXTURE, UV)    |     COLOR = texture(TEXTURE, UV); |
-        | end                               | }                                 |
-        +-----------------------------------+-----------------------------------+
-        | [OK] Transpiled in 0.42ms (0 warnings, 0 errors)                      |
-        +-----------------------------------------------------------------------+
+        ```crystal
+        emit_target "outline.gdshader", pattern_default_enabled: false
+        emit_target "pattern_replace.gdshader", pattern_default_enabled: true
+
+        shader_type :spatial
+        render_mode :unshaded
         ```
 
   - id: topic_02_live_recompilation
-    title: "Real-Time Recompilation & Diagnostics"
-    summary: "Sub-millisecond compilation triggers on keystroke with syntax error reporting."
+    title: "Multi-Target emit_target Compilation & Live Sync"
+    summary: "Automatic syncing of .gdshader, .gdshaderinc, and .glsl outputs on save."
     content: |
-      As you type in the left editor pane, the transpiler compiles the AST asynchronously with a
-      short debounce timer (~150ms). If a syntax error occurs (such as an unclosed `do ... end` block
-      or an undeclared identifier), the diagnostic console highlights the offending line with a red
-      marker and exact column error description.
+      Pressing `Ctrl+S` or clicking **Compile & Sync** in `CrShaderTabEditor` (or saving via `ResourceSaver`)
+      invokes `Compiler#compile_emit_targets`, writing every declared `emit_target` file to disk and updating
+      any cached `Godot::Shader` instances in memory for instant viewport hot-reload.

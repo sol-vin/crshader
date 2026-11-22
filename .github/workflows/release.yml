@@ -1360,7 +1360,6 @@ jobs:
     needs: [init-release, finalize-release]
     if: always() && !cancelled() && needs.finalize-release.result == 'success'
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 15
     environment:
       name: github-pages
@@ -1483,37 +1482,26 @@ jobs:
           fi
 
       - name: Generate API Documentation & Embed Benchmarks
-        continue-on-error: true
         shell: bash
         run: |
           mkdir -p docs
-          ADDON_NAME=$(awk '/^name:/ {print $2}' shard.yml 2>/dev/null | tr -d ' "\r\n')
           if [ -f "bin/lapis" ]; then
-            ./bin/lapis docs -p . || ./bin/lapis docs || true
+            ./bin/lapis docs -p . --github=sol-vin/crshader
           else
-            shards install || true
-            if [ -f "src/${ADDON_NAME}.cr" ]; then
-              crystal docs "src/${ADDON_NAME}.cr" --output docs || crystal docs --output docs || true
-            elif [ -f "src/main.cr" ]; then
-              crystal docs src/main.cr --output docs || crystal docs --output docs || true
-            else
-              crystal docs --output docs || true
-            fi
+            shards install --skip-postinstall || shards install || true
+            crystal docs src/main.cr --output docs
           fi
           touch docs/.nojekyll
-          if [ ! -f "docs/index.html" ]; then
-            echo "<html><head><title>${{ needs.init-release.outputs.addon_name }} Documentation</title></head><body><h1>${{ needs.init-release.outputs.addon_name }} Addon Documentation</h1><p>API documentation generated automatically via Crystal and Lapis.</p></body></html>" > docs/index.html
-          fi
+          test -s docs/index.html
+          test -s docs/CrShader.html
 
       - name: Upload Pages Artifact
-        continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs
 
       - name: Deploy to GitHub Pages
         id: deployment
-        continue-on-error: true
         uses: actions/deploy-pages@v4
 
       - name: Publish Documentation Deployment Summary
