@@ -483,14 +483,8 @@ module CrShader
       return nil if compiled_res_path.empty?
       return compiled_res_path if compiled_res_path.downcase.ends_with?(".crshader")
 
-      # 1. Direct stem sibling (e.g. outline.gdshader -> outline.crshader)
-      stem_candidate = compiled_res_path.sub(/\.(gdshaderinc|gdshader|glsl)$/i, ".crshader")
-      if stem_candidate != compiled_res_path
-        disk_cand = ResourceFormatLoaderCRShader.resolve_file_path(stem_candidate)
-        return stem_candidate unless disk_cand.empty?
-      end
-
-      # 2. Scan `.crshader` files in the same directory for matching `emit_target` (e.g. pattern_replace.gdshader -> outline.crshader)
+      # 1. Scan `.crshader` files in the same directory for an explicit `emit_target` / `output_target` declaration first
+      #    (handles multi-target files like `outline.crshader` -> `pattern_replace.gdshader` AND stem collisions like `outline.glsl` -> `outline_compositor.crshader`!)
       target_base = File.basename(compiled_res_path)
       dir_res = File.dirname(compiled_res_path)
       dir_disk = ResourceFormatLoaderCRShader.resolve_file_path(dir_res).gsub('\\', '/')
@@ -499,12 +493,21 @@ module CrShader
         dir_disk = ps.call_str("globalize_path", dir_res).gsub('\\', '/')
       end
       if !dir_disk.empty? && Dir.exists?(dir_disk)
-        Dir.glob("#{dir_disk}/*.crshader").each do |cr_file|
+        escaped_base = Regex.escape(target_base)
+        emit_regex = /\b(?:emit_target|output_target)\s+"(?:[^"]*\/)?#{escaped_base}"/
+        Dir.glob("#{dir_disk}/*.crshader").sort!.each do |cr_file|
           content = File.read(cr_file) rescue ""
-          if content.includes?(target_base)
+          if content.matches?(emit_regex)
             return "#{dir_res}/#{File.basename(cr_file)}"
           end
         end
+      end
+
+      # 2. Direct stem sibling fallback when no explicit `emit_target` claimed the file (e.g. water.gdshader -> water.crshader)
+      stem_candidate = compiled_res_path.sub(/\.(gdshaderinc|gdshader|glsl)$/i, ".crshader")
+      if stem_candidate != compiled_res_path
+        disk_cand = ResourceFormatLoaderCRShader.resolve_file_path(stem_candidate)
+        return stem_candidate unless disk_cand.empty?
       end
       nil
     rescue
