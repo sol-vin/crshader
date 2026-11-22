@@ -46,9 +46,10 @@ module CrShader
       @program.functions.each do |name, def_node|
         next if ALL_STAGES.includes?(name) || name == "main"
         next if @program.imported_functions.includes?(name)
-        next if @emitted_functions.includes?(name)
+        skey = "#{name}/#{def_node.args.size}"
+        next if @emitted_functions.includes?(skey)
         emit_function(def_node)
-        @emitted_functions.add(name)
+        @emitted_functions.add(skey)
       end
 
       @io << "#endif // #{@guard_name}\n"

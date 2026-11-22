@@ -156,4 +156,57 @@ describe "CrShader std/outline Toolkit & Multi-Cue Outline Shaders" do
     glsl.should contain("layout(push_constant, std430) uniform PushConstants {")
     glsl.should contain("} params;")
   end
+
+  it "deduplicates gdshaderinc helpers, resolves struct .color fields, emits setter assignments, and imports varyings/globals from gdshaderinc" do
+    inc_src = <<-CR
+      shader :spatial do
+        varying v_world_pos : Vec3
+        flat_varying v_surface_id : Float32
+      end
+
+      def helper_a(x : Float32) : Float32
+        return x > 0.5 ? 1.0 : 0.0
+      end
+
+      def helper_b(v : Vec3) : Float32
+        return helper_a(v.x)
+      end
+    CR
+
+    inc_code = CrShader::Compiler.new(target_override: CrShader::ShaderTarget::GDShaderInc).compile(inc_src)
+    inc_code.scan("float helper_a(").size.should eq(1)
+    inc_code.scan("float helper_b(").size.should eq(1)
+    inc_code.should contain("return (((x > 0.5)) ? (1.0) : (0.0));")
+
+    prog = CrShader::ShaderProgram.new
+    CrShader::GdshaderincReader.parse_into(inc_code + "\nbool _portal_near_clip_seam = false;\n", prog)
+    prog.external_constants["v_world_pos"].should eq("vec3")
+    prog.external_constants["v_surface_id"].should eq("float")
+    prog.external_constants["_portal_near_clip_seam"].should eq("bool")
+
+    glsl_struct_src = <<-CR
+      shader :compute do
+        local_size x: 8, y: 8, z: 1
+        image2d :out_img, format: :rgba16f, set: 0, binding: 0, writeonly: true
+      end
+
+      struct SamplePx
+        color : Vec3
+        flag : Bool
+      end
+
+      def main : Void
+        s : SamplePx
+        s.flag = true
+        s.color = s.flag ? vec3(1.0) : vec3(0.0)
+        base_color = s.color
+        imageStore(out_img, ivec2(0, 0), vec4(base_color, 1.0))
+      end
+    CR
+
+    glsl_out = CrShader::Compiler.new(target_override: CrShader::ShaderTarget::GLSL).compile(glsl_struct_src)
+    glsl_out.should contain("s.flag = true;")
+    glsl_out.should contain("s.color = ((s.flag) ? (vec3(1.0)) : (vec3(0.0)));")
+    glsl_out.should contain("vec3 base_color = s.color;")
+  end
 end

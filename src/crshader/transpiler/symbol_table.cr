@@ -484,6 +484,17 @@ module CrShader
         return TypeInfo.resolve(type_str, @target)
       end
 
+      # Check struct field access before constructor/intrinsic name dispatch
+      # (e.g. `center.color` on a struct with `vec3 color` must resolve to `vec3`, not `color(...) -> vec4`)
+      if (obj = node.obj) && node.args.empty?
+        recv_type = infer_type(obj)
+        if @known_structs.includes?(recv_type)
+          if st_field_type = @struct_fields["#{recv_type}.#{node.name}"]?
+            return st_field_type
+          end
+        end
+      end
+
       # Built-in constructor helpers & intrinsics
       case node.name
       when "vec2"                                                  then "vec2"
@@ -555,17 +566,7 @@ module CrShader
           "float"
         end
       else
-        # 1. Check struct field access first (handles struct fields even if named x/r/a/s)
-        if (obj = node.obj) && node.args.empty?
-          recv_type = infer_type(obj)
-          if @known_structs.includes?(recv_type)
-            if st_field_type = @struct_fields["#{recv_type}.#{node.name}"]?
-              return st_field_type
-            end
-          end
-        end
-
-        # 2. Check swizzle on vector receiver: e.g. v.xy, v.xz, v.rgb, v.rgba
+        # 1. Check swizzle on vector receiver: e.g. v.xy, v.xz, v.rgb, v.rgba
         if (obj = node.obj) && node.args.empty?
           sname = node.name
           if (sname.each_char.all? { |ch| "xyzw".includes?(ch) } ||

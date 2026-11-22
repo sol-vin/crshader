@@ -7,10 +7,12 @@ module CrShader
   # using `#include "res://...gdshaderinc"` or `include "..."` receive accurate
   # return-type, struct-field, and constant-type inference without duplicating emissions.
   class GdshaderincReader
-    STRUCT_REGEX = /\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{([^}]*)\}\s*;/m
-    FIELD_REGEX  = /\b([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[[^\]]*\])?\s*;/
-    CONST_REGEX  = /\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?\s*=/
-    FUNC_REGEX   = /(?:^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*\{/
+    STRUCT_REGEX  = /\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{([^}]*)\}\s*;/m
+    FIELD_REGEX   = /\b([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[[^\]]*\])?\s*;/
+    CONST_REGEX   = /\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?\s*=/
+    VARYING_REGEX = /\b(?:(?:flat|smooth)\s+)?varying\s+(?:(?:flat|smooth|lowp|mediump|highp)\s+)*([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?\s*;/
+    UNIFORM_REGEX = /\b(?:(?:instance|global)\s+)?uniform\s+(?:(?:lowp|mediump|highp)\s+)*([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?/
+    FUNC_REGEX    = /(?:^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*\{/
 
     RESERVED_RETURN_WORDS = Set{
       "if", "for", "while", "switch", "return", "struct", "uniform", "varying", "const", "layout",
@@ -76,12 +78,35 @@ module CrShader
         program.external_structs[sname] = StructDecl.new(sname, fields)
       end
 
-      # 2. Extract const declarations
+      # 2. Extract const, varying, uniform, and top-level global variable declarations
       cleaned.scan(CONST_REGEX) do |m|
         ctype = m[1]
         cname = m[2]
         arr_suffix = m[3]?.try(&.strip) || ""
         program.external_constants[cname] = "#{ctype}#{arr_suffix}"
+      end
+
+      cleaned.scan(VARYING_REGEX) do |m|
+        vtype = m[1]
+        vname = m[2]
+        arr_suffix = m[3]?.try(&.strip) || ""
+        program.external_constants[vname] = "#{vtype}#{arr_suffix}"
+      end
+
+      cleaned.scan(UNIFORM_REGEX) do |m|
+        utype = m[1]
+        uname = m[2]
+        arr_suffix = m[3]?.try(&.strip) || ""
+        program.external_constants[uname] = "#{utype}#{arr_suffix}"
+      end
+
+      # Strip function/struct bodies `{ ... }` to scan top-level global variables (e.g. `bool _portal_near_clip_seam = false;`)
+      top_level = strip_brace_bodies(cleaned)
+      top_level.scan(/(?:^|\n)\s*(bool|int|uint|float|[biu]?vec[234]|mat[234])\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?\s*(?:=|;)/) do |m|
+        gtype = m[1]
+        gname = m[2]
+        arr_suffix = m[3]?.try(&.strip) || ""
+        program.external_constants[gname] ||= "#{gtype}#{arr_suffix}"
       end
 
       # 3. Extract function return types
@@ -90,6 +115,21 @@ module CrShader
         fname = m[2]
         next if RESERVED_RETURN_WORDS.includes?(ret_type) || RESERVED_RETURN_WORDS.includes?(fname)
         program.external_functions[fname] = ret_type
+      end
+    end
+
+    private def self.strip_brace_bodies(src : String) : String
+      String.build(src.bytesize) do |io|
+        depth = 0
+        src.each_char do |ch|
+          if ch == '{'
+            depth += 1
+          elsif ch == '}'
+            depth = Math.max(0, depth - 1)
+          elsif depth == 0
+            io << ch
+          end
+        end
       end
     end
   end

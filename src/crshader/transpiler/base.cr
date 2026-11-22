@@ -346,7 +346,10 @@ module CrShader
       @io << "return"
       if exp = node.exp
         @io << " "
+        old_expr = @in_expression
+        @in_expression = true
         exp.accept(self)
+        @in_expression = old_expr
       end
       false
     end
@@ -561,9 +564,24 @@ module CrShader
       if name == "[]=" && node.args.size >= 2
         obj.accept(self)
         @io << "["
+        old_expr = @in_expression
+        @in_expression = true
         node.args[0].accept(self)
         @io << "] = "
         node.args[1].accept(self)
+        @in_expression = old_expr
+        return
+      end
+
+      # Field / swizzle setter `obj.field = val` (e.g. `p_uv.x = -p_uv.x`, `res.outline_id = ...`)
+      if name.ends_with?('=') && !["==", "!=", "<=", ">=", "==="].includes?(name) && node.args.size == 1
+        field_name = name.rchop
+        obj.accept(self)
+        @io << ".#{field_name} = "
+        old_expr = @in_expression
+        @in_expression = true
+        node.args[0].accept(self)
+        @in_expression = old_expr
         return
       end
 
@@ -1184,10 +1202,13 @@ module CrShader
     end
 
     private def emit_args(args : Array(Crystal::ASTNode))
+      old_expr = @in_expression
+      @in_expression = true
       args.each_with_index do |arg, idx|
         @io << ", " if idx > 0
         arg.accept(self)
       end
+      @in_expression = old_expr
     end
 
     private def needs_semicolon?(node : Crystal::ASTNode) : Bool
