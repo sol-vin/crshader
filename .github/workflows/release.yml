@@ -1366,6 +1366,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
 
@@ -1501,6 +1502,21 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs
+
+      - name: Wait for Pages Artifact Indexing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 5
+          for attempt in 1 2 3 4 5; do
+            if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" --jq '.artifacts[].name' 2>/dev/null | grep -qx "github-pages"; then
+              echo "Verified 'github-pages' artifact indexed on attempt ${attempt}."
+              break
+            fi
+            echo "Waiting for 'github-pages' artifact metadata indexing (attempt ${attempt}/5)..."
+            sleep 3
+          done
 
       - name: Deploy to GitHub Pages
         id: deployment
