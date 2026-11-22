@@ -464,13 +464,13 @@ module CrShader
           root = gp unless gp.empty?
         end
       end
-      root = Dir.current.gsub('\\', '/') if root.nil? || root.empty?
+      clean_root = (root.nil? || root.empty? ? Dir.current : root.not_nil!).gsub('\\', '/').rstrip('/')
 
       results = [] of String
-      Dir.glob("#{root}/**/*.crshader").sort!.each do |full|
+      Dir.glob("#{clean_root}/**/*.crshader").sort!.each do |full|
         norm = full.gsub('\\', '/')
         next if norm.includes?("/.godot/") || norm.includes?("/lib/") || norm.includes?("/bin/")
-        rel = norm.starts_with?("#{root}/") ? norm[(root.size + 1)..] : norm
+        rel = norm.downcase.starts_with?("#{clean_root.downcase}/") ? norm[(clean_root.size + 1)..] : norm
         results << "res://#{rel}"
       end
       results
@@ -493,7 +493,7 @@ module CrShader
       # 2. Scan `.crshader` files in the same directory for matching `emit_target` (e.g. pattern_replace.gdshader -> outline.crshader)
       target_base = File.basename(compiled_res_path)
       dir_res = File.dirname(compiled_res_path)
-      dir_disk = ResourceFormatLoaderCRShader.resolve_file_path(dir_res)
+      dir_disk = ResourceFormatLoaderCRShader.resolve_file_path(dir_res).gsub('\\', '/')
       if dir_disk.empty? && !Godot::ProjectSettings.singleton_ptr.null? && dir_res.starts_with?("res://")
         ps = Godot::ProjectSettings.new(Godot::ProjectSettings.singleton_ptr)
         dir_disk = ps.call_str("globalize_path", dir_res).gsub('\\', '/')
