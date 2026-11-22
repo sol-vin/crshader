@@ -1,0 +1,1029 @@
+---
+id: A_SIDE_BY_SIDE_COMPARISONS
+title: Complete CRShader Side-by-Side Output Atlas
+summary: Side-by-side source vs compiled output comparisons (.gdshader, .gdshaderinc,
+  Vulkan .glsl, --release -O, and Lapis Host Nodes) across all 12 CRShader special
+  feature families.
+track: 05_output_comparisons
+root_module: CrShader::Docs
+overview: 'This atlas showcases every special language, optimizer, debugging, and
+  code-generation feature of **CRShader** alongside the exact code emitted by its
+  transpiler backends:
+
+  - **Godot 4 GDShader (`.gdshader`)** for `spatial`, `canvas_item`, `particles`,
+  `sky`, and `fog` pipelines.
+
+  - **Godot 4 Header Libraries (`.gdshaderinc`)** with `#ifndef` guards and shared
+  structs/classes/helpers.
+
+  - **Vulkan GLSL 450 (`.glsl`)** for Godot 4.8 `CompositorEffect` post-processing
+  passes and parallel `RenderingDevice` compute kernels.
+
+  - **Production Specialized & Minified Outputs (`--release -O` / `-D`)** demonstrating
+  dead-uniform tree-shaking and zero-cost `inspect()` probe stripping.
+
+  - **Lapis `@[Tool]` Host Nodes (`.cr`)** synthesized automatically via `generate_node`.'
+related_sources:
+- src/crshader/compiler.cr
+- src/crshader/parser/class_lowering.cr
+- src/crshader/parser/archetypes.cr
+- src/crshader/composer/trait_fuser.cr
+- src/crshader/language/gradients_and_curves.cr
+- src/crshader/extensions/visual_inspector_extension.cr
+- src/crshader/generator/node_generator.cr
+sections:
+- id: topic_01_classes_and_methods
+  title: Classes, Structs, Constructors & Instance Methods
+  summary: Encapsulating shader data and behavior with Crystal class, struct, and
+    record blocks lowered to GDShader, GDShaderInc, and GLSL.
+  content: 'CRShader lets you author object-oriented `class`, `struct`, and one-line
+    `record` types with typed fields, custom `initialize` constructors, `def self.*`
+    static factory methods, predicate `?` methods, and mutating `!` methods.
+
+
+    Because GPU shading languages lack heap allocations and struct member functions,
+    `ClassLoweringPass` compiles every `class` or `struct` into a native value `struct`
+    plus tree-shaken free functions:
+
+    - **Read-only methods** pass `_self` by value (`FresnelRim _self`).
+
+    - **Mutating methods** (writing `@field = ...`, `@field *= ...`, or calling another
+    mutating sibling) automatically emit `inout FresnelRim _self`.
+
+    - **Crystal `?` and `!` suffixes** sanitize cleanly to C-valid identifiers (`active?`
+    -> `LightProbe_is_active`, `boost!` -> `FresnelRim_boost`).
+
+    - **Default arguments & `initialize`** expand at call sites so GDShader and GLSL
+    never see unsupported default parameter syntax.'
+  comparisons:
+  - title: 1A. OOP Shader Class with Static Factory, Mutating `!` Method & Dead-Method
+      Tree-Shaking
+    description: Notice how `boost!` automatically acquires `inout FresnelRim _self`,
+      while the unreferenced `debug_luma` method is stripped from both `.gdshader`
+      and `.glsl`.
+    columns:
+    - label: CRShader DSL (.crshader)
+      code: "shader_type :spatial\n\nclass FresnelRim\n  color : Vec3\n  power : Float32\n
+        \ energy : Float32\n\n  def self.icy : FresnelRim\n    FresnelRim.new(vec3(0.35,
+        0.8, 1.0), 3.0, 1.5)\n  end\n\n  def boost!(factor : Float32) : Void\n    @energy
+        *= factor\n  end\n\n  def evaluate(n : Vec3, v : Vec3) : Vec3\n    mask =
+        (1.0 - dot(n, v).saturate) ** @power\n    @color * (mask * @energy)\n  end\n\n
+        \ # Unused method — automatically pruned by TreeShaker!\n  def debug_luma
+        : Float32\n    @color.luminance\n  end\nend\n\nuniform rim_boost : Float32
+        = 1.25\n\ndef fragment\n  rim = FresnelRim.icy\n  rim.boost!(rim_boost)\n
+        \ ALBEDO = vec3(0.12, 0.14, 0.18)\n  EMISSION = rim.evaluate(NORMAL, VIEW)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot 4 (.gdshader)
+      code: "shader_type spatial;\n\nstruct FresnelRim {\n\tvec3 color;\n\tfloat power;\n\tfloat
+        energy;\n};\n\nuniform float rim_boost = 1.25;\n\nFresnelRim FresnelRim_icy()
+        {\n\treturn FresnelRim(vec3(0.35, 0.8, 1.0), 3.0, 1.5);\n}\n\nvoid FresnelRim_boost(inout
+        FresnelRim _self, float factor) {\n\t_self.energy *= factor;\n}\n\nfloat saturate(float
+        x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\nvec3 FresnelRim_evaluate(FresnelRim
+        _self, vec3 n, vec3 v) {\n\tfloat mask = pow((1.0 - clamp(dot(n, v), 0.0,
+        1.0)), _self.power);\n\treturn (_self.color * (mask * _self.energy));\n}\n\nvoid
+        fragment() {\n\tFresnelRim rim = FresnelRim_icy();\n\tFresnelRim_boost(rim,
+        rim_boost);\n\tALBEDO = vec3(0.12, 0.14, 0.18);\n\tEMISSION = FresnelRim_evaluate(rim,
+        NORMAL, VIEW);\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Vulkan Compute (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nstruct FresnelRim {\n\tvec3 color;\n\tfloat power;\n\tfloat energy;\n};\n\nlayout(rgba16f,
+        set = 0, binding = 0) uniform image2D out_img;\n\nlayout(push_constant, std430)
+        uniform CrShaderParams {\n\tfloat rim_boost;\n};\n\nFresnelRim FresnelRim_icy()
+        {\n\treturn FresnelRim(vec3(0.35, 0.8, 1.0), 3.0, 1.5);\n}\n\nvoid FresnelRim_boost(inout
+        FresnelRim _self, float factor) {\n\t_self.energy *= factor;\n}\n\nfloat saturate(float
+        x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\nvec3 FresnelRim_evaluate(FresnelRim
+        _self, vec3 n, vec3 v) {\n\tfloat mask = pow((1.0 - clamp(dot(n, v), 0.0,
+        1.0)), _self.power);\n\treturn (_self.color * (mask * _self.energy));\n}\n\nvoid
+        main() {\n\tivec2 px = ivec2(gl_GlobalInvocationID.xy);\n\tFresnelRim rim
+        = FresnelRim_icy();\n\tFresnelRim_boost(rim, rim_boost);\n\tvec3 col = FresnelRim_evaluate(rim,
+        vec3(0.0, 0.0, 1.0), vec3(0.0, 0.4, 0.9));\n\timageStore(out_img, px, vec4(col,
+        1.0));\n}"
+      lang: glsl
+      badge: GLSL 450
+    notes:
+    - Inside instance methods, both `@color` instance-variable syntax and bare `color`
+      getter syntax resolve to `_self.color`.
+    - In GLSL 450 compute kernels, `uniform rim_boost` is automatically packed into
+      `layout(push_constant, std430) uniform CrShaderParams`.
+  - title: 1B. One-Line `record`, Custom `initialize` Defaults & `.gdshaderinc` Header
+      Emission
+    description: Compiling a shared library module with `shader :gdshaderinc` retains
+      all public structs and lowered class helpers inside an `#ifndef` include guard.
+    columns:
+    - label: Shared Module (ray_hit.crshader)
+      code: "shader :gdshaderinc\n\nrecord RayHit, dist : Float32, normal : Vec3,
+        hit : Bool\n\nclass LightProbe\n  intensity : Float32\n\n  def initialize(@intensity
+        : Float32 = 1.0)\n  end\n\n  def active? : Bool\n    @intensity > 0.001\n
+        \ end\n\n  def scaled(mult : Float32 = 2.0) : Float32\n    intensity * mult\n
+        \ end\nend\n\ndef miss_hit : RayHit\n  RayHit.new(1000.0, vec3(0.0, 1.0, 0.0),
+        false)\nend\n\ndef default_probe_energy : Float32\n  probe = LightProbe.new\n
+        \ probe.active? ? probe.scaled : 0.0\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot Header (ray_hit.gdshaderinc)
+      code: "#ifndef RAY_HIT_GDSHADERINC\n#define RAY_HIT_GDSHADERINC\n\nstruct RayHit
+        {\n\tfloat dist;\n\tvec3 normal;\n\tbool hit;\n};\n\nstruct LightProbe {\n\tfloat
+        intensity;\n};\n\nRayHit miss_hit() {\n\treturn RayHit(1000.0, vec3(0.0, 1.0,
+        0.0), false);\n}\n\nLightProbe LightProbe__new(float intensity) {\n\tLightProbe
+        _self = LightProbe(0.0);\n\t_self.intensity = intensity;\n\treturn _self;\n}\n\nbool
+        LightProbe_is_active(LightProbe _self) {\n\treturn (_self.intensity > 0.001);\n}\n\nfloat
+        LightProbe_scaled(LightProbe _self, float mult) {\n\treturn (_self.intensity
+        * mult);\n}\n\nfloat default_probe_energy() {\n\tLightProbe probe = LightProbe__new(1.0);\n\treturn
+        ((LightProbe_is_active(probe)) ? (LightProbe_scaled(probe, 2.0)) : (0.0));\n\n}\n\n#endif
+        // RAY_HIT_GDSHADERINC"
+      lang: gdshaderinc
+      badge: GDSHADERINC
+    notes:
+    - Omitted default arguments (`LightProbe.new` and `probe.scaled`) are filled at
+      each call site (`LightProbe__new(1.0)` and `LightProbe_scaled(probe, 2.0)`).
+- id: topic_02_type_inference_and_control_flow
+  title: Type Inference, Branch Hoisting, Expressions & Loops
+  summary: How Crystal assignments, if/else variable scoping, range iterators, case/when,
+    and implicit returns transpile to C-family shader syntax.
+  content: 'In Crystal, variables do not require explicit type keywords on first assignment,
+    variables assigned inside `if`/`else` branches remain in scope afterward, and
+    the last expression of a typed `def` is returned implicitly. CRShader''s `SymbolTable`
+    and `BaseVisitor` bridge all of these idioms cleanly to strict C-style shader
+    scopes:
+
+    - **First-assignment inference**: `sum = 0.0` emits `float sum = 0.0;`, while
+    subsequent writes emit `sum = ...;`.
+
+    - **Branch variable hoisting**: Assigning a new local variable (`band`) inside
+    an `if`/`else` statement hoists `float band;` above the `if` block so C/GLSL block
+    scoping never hides it.
+
+    - **Idiomatic loops & control flow**: `(0...4).each` and `n.times` become `for`
+    loops, `unless` / `until` negate cleanly, `case`/`when` emits `switch`/`case`
+    with automatic `break;`, and `x ** y` lowers to `pow(x, y)`.'
+  comparisons:
+  - title: 2A. Local Inference, Hoisted Branch Variables, Range Loops, `case`/`when`
+      & `InOut(T)`
+    description: Identical helper logic compiled side-by-side to Godot 4 `canvas_item`
+      GDShader and Vulkan GLSL 450.
+    columns:
+    - label: CRShader DSL (.crshader)
+      code: "shader_type :canvas_item\n\ndef accumulate(uv : Vec2, delta : InOut(Vec2),
+        mode : Int32) : Float32\n  sum = 0.0\n  (0...4).each do |i|\n    weight =
+        (i == 0) ? 0.5 : 0.25\n    sum += sin(uv.x * (i.to_f + 1.0)) * weight\n  end\n\n
+        \ if sum > 0.25\n    band = sum ** 2.0\n  else\n    band = 0.0\n  end\n\n
+        \ unless band <= 0.0\n    case mode\n    when 1\n      delta += vec2(band
+        * 0.02, 0.0)\n    else\n      delta += vec2(0.0, band * 0.02)\n    end\n  end\n\n
+        \ band\nend\n\ndef fragment\n  ofs = vec2(0.0, 0.0)\n  energy = accumulate(UV,
+        ofs, 1)\n  COLOR = vec4(vec3(energy), 1.0)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot 4 (.gdshader)
+      code: "shader_type canvas_item;\n\nfloat accumulate(vec2 uv, inout vec2 delta,
+        int mode) {\n\tfloat sum = 0.0;\n\tfor (int i = 0; i < 4; i++) {\n\t\tfloat
+        weight = (((i == 0)) ? (0.5) : (0.25));\n\t\tsum += (sin((uv.x * (float(i)
+        + 1.0))) * weight);\n\t}\n\tfloat band;\n\tif ((sum > 0.25)) {\n\t\tband =
+        pow(sum, 2.0);\n\t} else {\n\t\tband = 0.0;\n\t}\n\tif (!((band <= 0.0)))
+        {\n\t\tswitch (mode) {\n\t\t\tcase 1:\n\t\t\t\tdelta += vec2((band * 0.02),
+        0.0);\n\t\t\t\tbreak;\n\t\t\tdefault:\n\t\t\t\tdelta += vec2(0.0, (band *
+        0.02));\n\t\t\t\tbreak;\n\t\t}\n\t}\n\treturn band;\n}\n\nvoid fragment()
+        {\n\tvec2 ofs = vec2(0.0, 0.0);\n\tfloat energy = accumulate(UV, ofs, 1);\n\tCOLOR
+        = vec4(vec3(energy), 1.0);\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Vulkan Compute (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(rgba16f, set = 0, binding = 0) uniform image2D out_img;\n\nfloat
+        accumulate(vec2 uv, inout vec2 delta, int mode) {\n\tfloat sum = 0.0;\n\tfor
+        (int i = 0; i < 4; i++) {\n\t\tfloat weight = (((i == 0)) ? (0.5) : (0.25));\n\t\tsum
+        += (sin((uv.x * (float(i) + 1.0))) * weight);\n\t}\n\tfloat band;\n\tif ((sum
+        > 0.25)) {\n\t\tband = pow(sum, 2.0);\n\t} else {\n\t\tband = 0.0;\n\t}\n\tif
+        (!((band <= 0.0))) {\n\t\tswitch (mode) {\n\t\t\tcase 1:\n\t\t\t\tdelta +=
+        vec2((band * 0.02), 0.0);\n\t\t\t\tbreak;\n\t\t\tdefault:\n\t\t\t\tdelta +=
+        vec2(0.0, (band * 0.02));\n\t\t\t\tbreak;\n\t\t}\n\t}\n\treturn band;\n}\n\nvoid
+        main() {\n\tivec2 px = ivec2(gl_GlobalInvocationID.xy);\n\tvec2 ofs = vec2(0.0,
+        0.0);\n\tfloat energy = accumulate((vec2(float(px.x), float(px.y)) / 512.0),
+        ofs, 1);\n\timageStore(out_img, px, vec4(vec3(energy), 1.0));\n}"
+      lang: glsl
+      badge: GLSL 450
+    notes:
+    - '`InOut(Vec2)` and `Out(T)` parameter wrappers emit `inout vec2` and `out T`
+      across all backends.'
+    - Type cast methods `.to_f`, `.to_i`, `.to_u`, and `.to_b` map directly to `float(...)`,
+      `int(...)`, `uint(...)`, and `bool(...)`.
+- id: topic_03_fluent_ufcs_and_artist_chains
+  title: Fluent UFCS & Artist Method Chains
+  summary: Left-to-right method chaining for UV warping, texture sampling, Photoshop-style
+    blend modes, color grading, and IEEE-754 bitcasts.
+  content: 'Deeply nested shader calls like `blend_overlay_rgba(hue_shift_rgba(adjust_contrast_rgba(texture(tex,
+    uv), 1.15), 0.08), tint, 0.65)` are hard to read and edit. CRShader supports left-to-right
+    fluent method chains backed by automatic `TreeShaker` dependency injection:
+
+    - **Texture methods**: `.sample(uv)`, `.sample_lod(uv, lod)`, `.fetch(coord, lod)`,
+    `.size`.
+
+    - **UV transforms**: `.tile(scale)`, `.scroll(vx, vy[, t])`, `.offset(dx, dy)`,
+    `.rotate(angle[, pivot])`, `.pixelate(steps)`, `.polar([center])`, `.wave(freq,
+    amp[, phase])`.
+
+    - **Color & blend pipelines**: `.contrast(k)`, `.saturate_color(s)`, `.hue_shift(a)`,
+    `.luminance`, `.posterize(steps)`, `.one_minus`, and `.blend(:multiply | :screen
+    | :overlay | :hard_light | :soft_light | :color_dodge | :color_burn | :difference
+    | :exclusion | :add, top, opacity)`.
+
+    - **Math & bitcasts**: `.saturate`, `.lerp(b, t)`, `.remap(in0, in1, out0, out1)`,
+    `.to_bits_u32`, `.to_bits_i32`, `.from_bits_f32`.'
+  comparisons:
+  - title: 3A. Chained UV Transforms, Texture Sampling, Color Grading & Blend Modes
+    description: Only the exact standard-library helpers referenced by your fluent
+      chain (`uv_wave`, `adjust_contrast_rgba`, `hue_shift_rgba`, `blend_overlay_rgba`,
+      `remap`) are emitted.
+    columns:
+    - label: CRShader DSL (.crshader)
+      code: "shader_type :canvas_item\n\nsampler albedo_tex, filter: :linear_mipmap,
+        repeat: :enable\nproperty tint : Color = Color.hex(\"#ff8844\"), hint: :source_color\n\ndef
+        fragment\n  uv = UV.tile(2.0).scroll(0.1, 0.0).wave(8.0, 0.02)\n  col = albedo_tex.sample(uv)\n
+        \   .contrast(1.15)\n    .hue_shift(0.08)\n    .blend(:overlay, tint, 0.65)\n
+        \ mask = col.luminance.remap(0.1, 0.9, 0.0, 1.0).saturate\n  COLOR = vec4(col.rgb.posterize(8.0)
+        * mask, col.a)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot 4 (.gdshader)
+      code: "shader_type canvas_item;\n\nuniform sampler2D albedo_tex : filter_linear_mipmap,
+        repeat_enable;\nuniform vec4 tint : source_color = vec4(1.0, 0.5333, 0.2667,
+        1.0);\n\nvec2 uv_wave(vec2 uv, float freq, float amp, float phase) {\n\treturn
+        vec2((uv.x + (sin(((uv.y * freq) + phase)) * amp)), (uv.y + (cos(((uv.x *
+        freq) + phase)) * amp)));\n}\n\nvec3 blend_overlay(vec3 base, vec3 top) {\n\tvec3
+        dark = ((2.0 * base) * top);\n\tvec3 light = (vec3(1.0, 1.0, 1.0) - ((2.0
+        * (vec3(1.0, 1.0, 1.0) - base)) * (vec3(1.0, 1.0, 1.0) - top)));\n\treturn
+        mix(dark, light, step(vec3(0.5, 0.5, 0.5), base));\n}\n\nvec3 blend_overlay_opacity(vec3
+        base, vec3 top, float opacity) {\n\treturn mix(base, blend_overlay(base, top),
+        opacity);\n}\n\nvec4 blend_overlay_rgba(vec4 base, vec4 top, float opacity)
+        {\n\treturn vec4(mix(base.rgb, blend_overlay(base.rgb, top.rgb), (opacity
+        * top.a)), base.a);\n}\n\nvec3 hue_shift_rgb(vec3 c, float amount) {\n\tfloat
+        angle = (amount * 6.2831853);\n\tvec3 k = vec3(0.57735027, 0.57735027, 0.57735027);\n\tfloat
+        cos_a = cos(angle);\n\treturn (((c * cos_a) + (cross(k, c) * sin(angle)))
+        + ((k * dot(k, c)) * (1.0 - cos_a)));\n}\n\nvec4 hue_shift_rgba(vec4 c, float
+        amount) {\n\treturn vec4(hue_shift_rgb(c.rgb, amount), c.a);\n}\n\nvec3 adjust_contrast(vec3
+        c, float contrast) {\n\treturn (((c - 0.5) * contrast) + 0.5);\n}\n\nvec4
+        adjust_contrast_rgba(vec4 c, float contrast) {\n\treturn vec4((((c.rgb - vec3(0.5,
+        0.5, 0.5)) * contrast) + vec3(0.5, 0.5, 0.5)), c.a);\n}\n\nfloat saturate(float
+        x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\nfloat remap(float val, float in_min,
+        float in_max, float out_min, float out_max) {\n\treturn (out_min + (((val
+        - in_min) * (out_max - out_min)) / (in_max - in_min)));\n}\n\nvoid fragment()
+        {\n\tvec2 uv = uv_wave(((fract((UV) * (2.0))) + vec2(0.1, 0.0) * TIME), 8.0,
+        0.02, TIME);\n\tvec4 col = blend_overlay_rgba(hue_shift_rgba(adjust_contrast_rgba(texture(albedo_tex,
+        uv), 1.15), 0.08), tint, 0.65);\n\tfloat mask = clamp(remap(dot((col).rgb,
+        vec3(0.2126, 0.7152, 0.0722)), 0.1, 0.9, 0.0, 1.0), 0.0, 1.0);\n\tCOLOR =
+        vec4(((floor((col.rgb) * (8.0)) / max((8.0), 1.0)) * mask), col.a);\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Vulkan Compute Chains (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(rgba16f, set = 0, binding = 0) uniform image2D out_img;\n\nlayout(set
+        = 0, binding = 1) uniform sampler2D albedo_tex;\n\nlayout(push_constant, std430)
+        uniform CrShaderParams {\n\tvec4 tint;\n\tfloat elapsed;\n};\n\nvec2 uv_pixelate(vec2
+        uv, float steps) {\n\tfloat s = max(steps, 1.0);\n\treturn (floor((uv * s))
+        / s);\n}\n\nvec2 uv_rotate(vec2 uv, float angle, vec2 pivot) {\n\tvec2 d =
+        (uv - pivot);\n\tfloat s = sin(angle);\n\tfloat c = cos(angle);\n\treturn
+        (vec2(((d.x * c) - (d.y * s)), ((d.x * s) + (d.y * c))) + pivot);\n}\n\nvec3
+        blend_screen(vec3 base, vec3 top) {\n\treturn (vec3(1.0, 1.0, 1.0) - ((vec3(1.0,
+        1.0, 1.0) - base) * (vec3(1.0, 1.0, 1.0) - top)));\n}\n\nvec3 blend_screen_opacity(vec3
+        base, vec3 top, float opacity) {\n\treturn mix(base, blend_screen(base, top),
+        opacity);\n}\n\nvec4 blend_screen_rgba(vec4 base, vec4 top, float opacity)
+        {\n\treturn vec4(mix(base.rgb, blend_screen(base.rgb, top.rgb), (opacity *
+        top.a)), base.a);\n}\n\nfloat grayscale(vec3 c) {\n\treturn dot(c, vec3(0.299,
+        0.587, 0.114));\n}\n\nvec3 adjust_saturation(vec3 c, float saturation) {\n\tfloat
+        gray = grayscale(c);\n\treturn mix(vec3(gray, gray, gray), c, saturation);\n}\n\nvec4
+        saturate_rgba(vec4 c, float saturation) {\n\tfloat luma = dot(c.rgb, vec3(0.2126,
+        0.7152, 0.0722));\n\treturn vec4(mix(vec3(luma, luma, luma), c.rgb, saturation),
+        c.a);\n}\n\nfloat saturate(float x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\nvoid
+        main() {\n\tivec2 px = ivec2(gl_GlobalInvocationID.xy);\n\tvec2 base_uv =
+        (vec2(float(px.x), float(px.y)) / 512.0);\n\tvec2 uv = uv_pixelate(uv_rotate(fract((base_uv)
+        * (2.0)), 0.35, vec2(0.5, 0.5)), 64.0);\n\tvec4 col = blend_screen_rgba(saturate_rgba(textureLod(albedo_tex,
+        uv, 0.0), 1.25), tint, 0.5);\n\tfloat bits = uintBitsToFloat(floatBitsToUint(elapsed));\n\timageStore(out_img,
+        px, vec4((col.rgb * clamp(bits, 0.0, 1.0)), col.a));\n}"
+      lang: glsl
+      badge: GLSL 450
+    notes:
+    - Receiver type inference (`vec3` vs `vec4`) automatically selects RGB vs alpha-preserving
+      RGBA helpers (e.g. `blend_overlay_rgba` vs `blend_overlay_opacity`).
+- id: topic_04_uniforms_groups_palettes_and_packing
+  title: Typed Uniforms, Inspector Groups, Palettes & Vulkan Layout Packing
+  summary: How nested uniform groups, doc comments, hex colors, palette arrays, and
+    Vulkan std430/std140 layouts compile across GDShader and GLSL.
+  content: 'CRShader unifies Godot Inspector ergonomics with Vulkan `RenderingDevice`
+    descriptor layout rules from a single declaration syntax:
+
+    - **Inspector Groups & Doc Harvesting**: `group` / `subgroup` blocks emit balanced
+    `group_uniforms Group.Subgroup;` directives, and `# comments` directly above uniforms
+    emit `/** ... */` Godot Inspector tooltips.
+
+    - **Hex & Palette Resources**: `Color.hex("#rrggbb")` converts hex strings to
+    normalized floats at compile time; `PackedColorArray[...]` and `resource("res://palette.tres")`
+    synthesize `const int <name>_size = N;` plus typed uniform arrays.
+
+    - **Deterministic GLSL Layout Packing (`GLSLLayoutPacker`)**: When compiling to
+    `.glsl`, opaque samplers receive non-colliding `set = 0, binding = N` slots, compact
+    scalar/vector blocks (`<= 128` bytes, no arrays) pack into `layout(push_constant,
+    std430) uniform CrShaderParams`, and array/large blocks automatically upgrade
+    to `layout(set = 1, binding = 0, std140) uniform CrShaderUniforms`.'
+  comparisons:
+  - title: 4A. Nested `group`/`subgroup`, Doc Tooltips & Compact `push_constant` (`std430`)
+      Packing
+    description: Scalar and vector uniforms under 128 bytes pack directly into a fast
+      Vulkan `push_constant` block when targeting GLSL.
+    columns:
+    - label: CRShader DSL (.crshader)
+      code: "shader_type :spatial\n\nsampler albedo_map, filter: :linear_mipmap, repeat:
+        :enable\n\ngroup \"Surface\" do\n  # Primary surface tint in sRGB\n  property
+        base_tint : Color = Color.hex(\"#38bdf8\"), hint: :source_color\n\n  subgroup
+        \"Rim\" do\n    # Edge rim width\n    property rim_width : Float32 = 0.35,
+        range: 0.0..1.0, step: 0.05\n    property rim_boost : Float32 = 1.5, range:
+        0.0..4.0\n  end\nend\n\ndef fragment\n  tex = albedo_map.sample(UV)\n  ALBEDO
+        = tex.rgb * base_tint.rgb * (1.0 + rim_width * rim_boost)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot 4 (.gdshader)
+      code: "shader_type spatial;\n\nuniform sampler2D albedo_map : filter_linear_mipmap,
+        repeat_enable;\ngroup_uniforms Surface;\n/** Primary surface tint in sRGB
+        */\nuniform vec4 base_tint : source_color = vec4(0.2196, 0.7412, 0.9725, 1.0);\ngroup_uniforms
+        Surface.Rim;\n/** Edge rim width */\nuniform float rim_width : hint_range(0.0,
+        1.0, 0.05) = 0.35;\nuniform float rim_boost : hint_range(0.0, 4.0) = 1.5;\ngroup_uniforms;\n\nvoid
+        fragment() {\n\tvec4 tex = texture(albedo_map, UV);\n\tALBEDO = ((tex.rgb
+        * base_tint.rgb) * (1.0 + (rim_width * rim_boost)));\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Vulkan GLSL Packing (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(set = 0, binding = 0) uniform sampler2D albedo_map;\n\nlayout(push_constant,
+        std430) uniform CrShaderParams {\n\tvec4 base_tint;\n\tfloat rim_width;\n\tfloat
+        rim_boost;\n};\n\nvoid fragment() {\n\tvec4 tex = texture(albedo_map, UV);\n\tALBEDO
+        = ((tex.rgb * base_tint.rgb) * (1.0 + (rim_width * rim_boost)));\n}\n\nvoid
+        main() {\n}"
+      lang: glsl
+      badge: GLSL 450
+  - title: 4B. `instance_uniform`, `global_uniform`, `PackedColorArray` & Automatic
+      `std140` UBO Upgrade
+    description: Adding a variable-size `PackedColorArray` synthesizes `palette_size`
+      and automatically promotes the GLSL block to `set = 1, binding = 0, std140`.
+    columns:
+    - label: CRShader Palette Source (.crshader)
+      code: "shader_type :spatial\n\ninstance_uniform unit_tint : Vec3 = vec3(1.0,
+        1.0, 1.0)\nglobal_uniform wind_time : Float32\n\nuniform palette = PackedColorArray[\n
+        \ Color.hex(\"#0f172a\"),\n  Color.hex(\"#38bdf8\"),\n  Color.hex(\"#f8fafc\"),\n]\n\ndef
+        fragment\n  idx = int(clamp((UV.x + wind_time * 0.05) * float(palette_size),
+        0.0, float(palette_size - 1)))\n  ALBEDO = palette[idx].rgb * unit_tint\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot 4 (.gdshader)
+      code: "shader_type spatial;\n\ninstance uniform vec3 unit_tint = vec3(1.0, 1.0,
+        1.0);\nglobal uniform float wind_time;\nconst int palette_size = 3;\nuniform
+        vec4 palette[3];\n\nvoid fragment() {\n\tint idx = int(clamp(((UV.x + (wind_time
+        * 0.05)) * float(palette_size)), 0.0, float((palette_size - 1))));\n\tALBEDO
+        = (palette[idx].rgb * unit_tint);\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Vulkan UBO Upgrade (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nconst int palette_size = 3;\nlayout(set = 1, binding = 0, std140)
+        uniform CrShaderUniforms {\n\tvec3 unit_tint;\n\tfloat wind_time;\n\tvec4
+        palette[3];\n};\n\nvoid fragment() {\n\tint idx = int(clamp(((UV.x + (wind_time
+        * 0.05)) * float(palette_size)), 0.0, float((palette_size - 1))));\n\tALBEDO
+        = (palette[idx].rgb * unit_tint);\n}\n\nvoid main() {\n}"
+      lang: glsl
+      badge: GLSL 450
+- id: topic_05_shader_archetypes
+  title: Declarative Shader Archetypes
+  summary: Zero-boilerplate domain blocks (sprite_effect, ui_effect, screen_effect,
+    surface_material) that hoist uniforms and synthesize pipeline boilerplate.
+  content: 'Archetypes eliminate repetitive Godot setup code while allowing `property`,
+    `sampler`, `class`, and `def` declarations right inside the block:
+
+    - **`sprite_effect`**: Sets `shader_type canvas_item`, samples `TEXTURE * COLOR`,
+    optionally exposes `TEXTURE_PIXEL_SIZE`, and binds the final expression to `COLOR`.
+
+    - **`ui_effect`**: Computes screen-space UV derivatives (`dFdx`/`dFdy`) so SDF
+    circles, rings, and borders stay circular even on stretched non-square `Control`
+    nodes.
+
+    - **`screen_effect`**: Supports both 2D `canvas_item` and 3D `mode: :spatial,
+    depth: true` full-screen post-process quads (auto-emitting `POSITION = vec4(VERTEX.xy,
+    1.0, 1.0)`, `screen_texture`, and `depth_texture`).
+
+    - **`surface_material`**: Configures curated 3D `render_mode` presets (`:pbr`,
+    `:toon`, `:glass`, `:foliage`, `:unshaded`).'
+  comparisons:
+  - title: 5A. 2D `sprite_effect` & Derivative Aspect-Corrected `ui_effect`
+    description: Compare the concise archetype DSL on the left with the expanded `sprite_effect`
+      and aspect-corrected `ui_effect` GDShader outputs.
+    columns:
+    - label: sprite_effect & ui_effect (.crshader)
+      code: "# --- A: sprite_effect ---\nsprite_effect unshaded: true do |uv, color,
+        px|\n  property flash : Float32 = 0.35, range: 0.0..1.0\n  outline = TEXTURE.sample(uv
+        + vec2(px.x, 0.0)).a\n  vec4(mix(color.rgb, vec3(1.0, 1.0, 1.0), flash), max(color.a,
+        outline * 0.5))\nend\n\n# --- B: ui_effect ---\nui_effect unshaded: true do
+        |uv, centered_uv, color|\n  ring = smoothstep(0.42, 0.40, length(centered_uv))\n
+        \ vec4(color.rgb * ring, color.a * ring)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Expanded sprite_effect (.gdshader)
+      code: "shader_type canvas_item;\n\nrender_mode unshaded;\n\nuniform float flash
+        : hint_range(0.0, 1.0) = 0.35;\n\nvoid fragment() {\n\tvec2 uv = UV;\n\tvec4
+        color = (texture(TEXTURE, uv) * COLOR);\n\tvec2 px = TEXTURE_PIXEL_SIZE;\n\tfloat
+        outline = texture(TEXTURE, (uv + vec2(px.x, 0.0))).a;\n\tcolor = vec4(mix(color.rgb,
+        vec3(1.0, 1.0, 1.0), flash), max(color.a, (outline * 0.5)));\n\tCOLOR = color;\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Expanded ui_effect (.gdshader)
+      code: "shader_type canvas_item;\n\nrender_mode unshaded;\n\nvoid fragment()
+        {\n\tvec2 uv = UV;\n\tfloat __duv_x = length(vec2(dFdx(uv.x), dFdy(uv.x)));\n\tfloat
+        __duv_y = length(vec2(dFdx(uv.y), dFdy(uv.y)));\n\tfloat __ui_aspect = ((((__duv_x
+        > 0.000001) && (__duv_y > 0.000001))) ? ((__duv_y / __duv_x)) : (1.0));\n\tvec2
+        centered_uv = ((uv - vec2(0.5, 0.5)) * vec2(__ui_aspect, 1.0));\n\tvec4 color
+        = (texture(TEXTURE, uv) * COLOR);\n\tfloat ring = smoothstep(0.42, 0.40, length(centered_uv));\n\tcolor
+        = vec4((color.rgb * ring), (color.a * ring));\n\tCOLOR = color;\n}"
+      lang: gdshader
+      badge: GDSHADER
+  - title: 5B. 3D Depth-Aware `screen_effect` & Stylized `:toon` `surface_material`
+    description: '`screen_effect mode: :spatial, depth: true` automatically generates
+      the clip-space quad `vertex()` stage, render modes, and screen/depth samplers.'
+    columns:
+    - label: 3D Archetypes (.crshader)
+      code: "# --- A: 3D screen_effect ---\nscreen_effect mode: :spatial, depth: true
+        do |uv, color|\n  property fog_color : Color = Color.hex(\"#1e293b\"), hint:
+        :source_color\n  raw_d = texture(depth_texture, uv).r\n  fog_factor = smoothstep(0.0,
+        0.98, 1.0 - raw_d)\n  vec4(mix(color.rgb, fog_color.rgb, fog_factor), color.a)\nend\n\n#
+        --- B: :toon surface_material ---\nsurface_material :toon do\n  property tint
+        : Color = Color.hex(\"#f97316\"), hint: :source_color\n  ALBEDO = tint.rgb\n
+        \ ROUGHNESS = 0.45\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Expanded 3D screen_effect (.gdshader)
+      code: "shader_type spatial;\n\nrender_mode unshaded, cull_disabled, depth_test_disabled,
+        fog_disabled;\n\nuniform sampler2D screen_texture : hint_screen_texture, repeat_disable,
+        filter_linear_mipmap;\nuniform sampler2D depth_texture : hint_depth_texture,
+        repeat_disable, filter_nearest;\nuniform vec4 fog_color : source_color = vec4(0.1176,
+        0.1608, 0.2314, 1.0);\n\nvoid vertex() {\n\tPOSITION = vec4(VERTEX.xy, 1.0,
+        1.0);\n}\n\nvoid fragment() {\n\tvec2 uv = SCREEN_UV;\n\tvec4 color = texture(screen_texture,
+        uv);\n\tfloat raw_d = texture(depth_texture, uv).r;\n\tfloat fog_factor =
+        smoothstep(0.0, 0.98, (1.0 - raw_d));\n\tcolor = vec4(mix(color.rgb, fog_color.rgb,
+        fog_factor), color.a);\n\tALBEDO = color.rgb;\n\tALPHA = color.a;\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Expanded :toon surface_material (.gdshader)
+      code: "shader_type spatial;\n\nrender_mode cull_back, diffuse_toon, specular_toon;\n\nuniform
+        vec4 tint : source_color = vec4(0.9765, 0.451, 0.0863, 1.0);\n\nvoid fragment()
+        {\n\tALBEDO = tint.rgb;\n\tROUGHNESS = 0.45;\n}"
+      lang: gdshader
+      badge: GDSHADER
+- id: topic_06_traits_and_cross_target_fusion
+  title: Composable shader_trait & Hygienic use_trait Fusion
+  summary: Fusing reusable vertex, fragment, light, and cross-target pixel traits
+    with automatic prefix namespacing and AST local-variable hygiene.
+  content: 'Unlike `#include` files (which cannot merge logic into `vertex()` or `fragment()`
+    and collide when included twice), `shader_trait` and `use_trait` fuse modular
+    effects at the AST level:
+
+    - **Cross-Target `on_pixel` Hooks**: Built-in post-processing traits (`vignette`,
+    `chromatic_aberration`, `color_grade`, `film_grain`, `shockwave_ripple`) compile
+    seamlessly into **both** 2D/3D `.gdshader` screen passes (`texture(screen_texture,
+    ...)`) and Godot 4.8 Vulkan `.glsl` compositor passes (`imageLoad(color_image,
+    ...)`).
+
+    - **Multi-Instance `prefix:` Namespacing & Hygiene**: Applying the same trait
+    twice (`prefix: :key` and `prefix: :fill`) namespaces every uniform, group, constant,
+    struct, helper, and stage-local variable (`_key_rim_fresnel_f1_0_ndotv`) so local
+    declarations never collide.'
+  comparisons:
+  - title: 6A. Same `on_pixel` Traits Compiled to Screen `.gdshader` AND Vulkan Compositor
+      `.glsl`
+    description: '`chromatic_aberration` and prefixed `vignette` fuse cleanly into
+      both a `CanvasItem` screen shader and a `RenderingDevice` compute compositor
+      pass.'
+    columns:
+    - label: Trait Composition (.crshader)
+      code: "# --- Screen Pass ---\nuse_trait \"std/traits/chromatic_aberration\"\nuse_trait
+        \"std/traits/vignette\", prefix: :outer\n\nscreen_effect do |uv, color|\n
+        \ color\nend\n\n# --- Compositor Pass ---\ncompositor_effect :post_transparent
+        do\n  access :color\n  use_trait \"std/traits/chromatic_aberration\"\n  use_trait
+        \"std/traits/vignette\", prefix: :outer\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Fused Screen Pass (.gdshader)
+      code: "shader_type canvas_item;\n\nrender_mode unshaded;\n\nuniform sampler2D
+        screen_texture : hint_screen_texture, repeat_disable, filter_linear_mipmap;\ngroup_uniforms
+        ChromaticAberration;\nuniform float aberration_amount : hint_range(0.0, 0.05)
+        = 0.004;\ngroup_uniforms Outer_Vignette;\nuniform float outer_vignette_intensity
+        : hint_range(0.0, 1.0) = 0.45;\nuniform float outer_vignette_radius : hint_range(0.1,
+        1.5) = 0.82;\nuniform float outer_vignette_softness : hint_range(0.02, 1.0)
+        = 0.45;\nuniform vec4 outer_vignette_color : source_color = vec4(0.0235, 0.0353,
+        0.0745, 1.0);\ngroup_uniforms;\n\nvoid fragment() {\n\tvec2 uv = SCREEN_UV;\n\tvec4
+        color = texture(screen_texture, uv);\n\tcolor;\n\tvec2 _chromatic_aberration_p0_0_dir
+        = (uv - vec2(0.5, 0.5));\n\tvec2 _chromatic_aberration_p0_0_uv_r = clamp((uv
+        + (_chromatic_aberration_p0_0_dir * aberration_amount)), vec2(0.0, 0.0), vec2(1.0,
+        1.0));\n\tvec2 _chromatic_aberration_p0_0_uv_b = clamp((uv - (_chromatic_aberration_p0_0_dir
+        * aberration_amount)), vec2(0.0, 0.0), vec2(1.0, 1.0));\n\tfloat _chromatic_aberration_p0_0_r_ch
+        = texture(screen_texture, _chromatic_aberration_p0_0_uv_r).r;\n\tfloat _chromatic_aberration_p0_0_b_ch
+        = texture(screen_texture, _chromatic_aberration_p0_0_uv_b).b;\n\tcolor = vec4(_chromatic_aberration_p0_0_r_ch,
+        color.g, _chromatic_aberration_p0_0_b_ch, color.a);\n\tfloat _outer_vignette_p1_0_dist
+        = length((uv - vec2(0.5, 0.5)));\n\tfloat _outer_vignette_p1_0_vig = smoothstep(outer_vignette_radius,
+        (outer_vignette_radius - outer_vignette_softness), _outer_vignette_p1_0_dist);\n\tvec3
+        _outer_vignette_p1_0_out_rgb = mix(color.rgb, outer_vignette_color.rgb, ((1.0
+        - _outer_vignette_p1_0_vig) * outer_vignette_intensity));\n\tcolor = vec4(_outer_vignette_p1_0_out_rgb,
+        color.a);\n\tCOLOR = color;\n}"
+      lang: gdshader
+      badge: SCREEN GDSHADER
+    - label: Fused Compositor Pass (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(rgba16f, set = 0, binding = 0) uniform image2D color_image;\n\nlayout(push_constant,
+        std430) uniform CrShaderParams {\n\tfloat aberration_amount;\n\tfloat outer_vignette_intensity;\n\tfloat
+        outer_vignette_radius;\n\tfloat outer_vignette_softness;\n\tvec4 outer_vignette_color;\n};\n\nvoid
+        main() {\n\tivec2 coord = ivec2(gl_GlobalInvocationID.xy);\n\tivec2 size =
+        imageSize(color_image);\n\tif (((coord.x >= size.x) || (coord.y >= size.y)))
+        {\n\t\treturn;\n\t}\n\tvec2 uv = ((vec2(float(coord.x), float(coord.y)) +
+        vec2(0.5, 0.5)) / vec2(float(size.x), float(size.y)));\n\tvec4 color = imageLoad(color_image,
+        coord);\n\tvec2 _chromatic_aberration_p0_0_dir = (uv - vec2(0.5, 0.5));\n\tvec2
+        _chromatic_aberration_p0_0_uv_r = clamp((uv + (_chromatic_aberration_p0_0_dir
+        * aberration_amount)), vec2(0.0, 0.0), vec2(1.0, 1.0));\n\tvec2 _chromatic_aberration_p0_0_uv_b
+        = clamp((uv - (_chromatic_aberration_p0_0_dir * aberration_amount)), vec2(0.0,
+        0.0), vec2(1.0, 1.0));\n\tivec2 _chromatic_aberration_p0_0_img_sz = imageSize(color_image);\n\tvec2
+        _chromatic_aberration_p0_0_sz_f = vec2(float(_chromatic_aberration_p0_0_img_sz.x),
+        float(_chromatic_aberration_p0_0_img_sz.y));\n\tivec2 _chromatic_aberration_p0_0_max_px
+        = (_chromatic_aberration_p0_0_img_sz - ivec2(1, 1));\n\tfloat _chromatic_aberration_p0_0_r_ch
+        = imageLoad(color_image, clamp(ivec2((_chromatic_aberration_p0_0_uv_r * _chromatic_aberration_p0_0_sz_f)),
+        ivec2(0, 0), _chromatic_aberration_p0_0_max_px)).r;\n\tfloat _chromatic_aberration_p0_0_b_ch
+        = imageLoad(color_image, clamp(ivec2((_chromatic_aberration_p0_0_uv_b * _chromatic_aberration_p0_0_sz_f)),
+        ivec2(0, 0), _chromatic_aberration_p0_0_max_px)).b;\n\tcolor = vec4(_chromatic_aberration_p0_0_r_ch,
+        color.g, _chromatic_aberration_p0_0_b_ch, color.a);\n\tfloat _outer_vignette_p1_0_dist
+        = length((uv - vec2(0.5, 0.5)));\n\tfloat _outer_vignette_p1_0_vig = smoothstep(outer_vignette_radius,
+        (outer_vignette_radius - outer_vignette_softness), _outer_vignette_p1_0_dist);\n\tvec3
+        _outer_vignette_p1_0_out_rgb = mix(color.rgb, outer_vignette_color.rgb, ((1.0
+        - _outer_vignette_p1_0_vig) * outer_vignette_intensity));\n\tcolor = vec4(_outer_vignette_p1_0_out_rgb,
+        color.a);\n\timageStore(color_image, coord, color);\n}"
+      lang: glsl
+      badge: COMPOSITOR GLSL
+  - title: 6B. Multi-Instance Prefixed 3D Traits (`wind_sway` + Dual `rim_fresnel`)
+    description: 'Fusing `rim_fresnel` twice with `prefix: :key` and `prefix: :fill`
+      creates isolated Inspector groups (`Key_RimFresnel`, `Fill_RimFresnel`) and
+      collision-free locals.'
+    columns:
+    - label: Dual-Rim Spatial Shader (.crshader)
+      code: "surface_material :pbr do\n  use_trait \"std/traits/wind_sway\"\n  use_trait
+        \"std/traits/rim_fresnel\", prefix: :key\n  use_trait \"std/traits/rim_fresnel\",
+        prefix: :fill\n\n  ALBEDO = vec3(0.14, 0.22, 0.18)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Fused Spatial Output (.gdshader)
+      code: "shader_type spatial;\n\nrender_mode cull_back, diffuse_burley, specular_schlick_ggx;\n\ngroup_uniforms
+        WindSway;\nuniform float wind_speed : hint_range(0.0, 10.0) = 2.2;\nuniform
+        float wind_strength : hint_range(0.0, 1.5) = 0.12;\nuniform float wind_scale
+        : hint_range(0.1, 10.0) = 1.5;\ngroup_uniforms Key_RimFresnel;\nuniform vec4
+        key_rim_color : source_color = vec4(0.4, 0.8, 1.0, 1.0);\nuniform float key_rim_power
+        : hint_range(0.5, 10.0) = 3.0;\nuniform float key_rim_intensity : hint_range(0.0,
+        5.0) = 1.2;\ngroup_uniforms Fill_RimFresnel;\nuniform vec4 fill_rim_color
+        : source_color = vec4(0.4, 0.8, 1.0, 1.0);\nuniform float fill_rim_power :
+        hint_range(0.5, 10.0) = 3.0;\nuniform float fill_rim_intensity : hint_range(0.0,
+        5.0) = 1.2;\ngroup_uniforms;\n\nvoid vertex() {\n\tfloat _wind_sway_v0_0_height_mask
+        = (clamp(VERTEX.y, 0.0, 2.0) * 0.5);\n\tfloat _wind_sway_v0_0_phase = ((TIME
+        * wind_speed) + ((VERTEX.x + VERTEX.z) * wind_scale));\n\tVERTEX = (VERTEX
+        + vec3(((sin(_wind_sway_v0_0_phase) * wind_strength) * _wind_sway_v0_0_height_mask),
+        0.0, (((cos((_wind_sway_v0_0_phase * 0.8)) * wind_strength) * 0.5) * _wind_sway_v0_0_height_mask)));\n}\n\nvoid
+        fragment() {\n\tALBEDO = vec3(0.14, 0.22, 0.18);\n\tfloat _key_rim_fresnel_f1_0_ndotv
+        = clamp(dot(NORMAL, VIEW), 0.0, 1.0);\n\tfloat _key_rim_fresnel_f1_0_rim_mask
+        = pow((1.0 - _key_rim_fresnel_f1_0_ndotv), key_rim_power);\n\tEMISSION = (EMISSION
+        + (key_rim_color.rgb * (_key_rim_fresnel_f1_0_rim_mask * key_rim_intensity)));\n\tfloat
+        _fill_rim_fresnel_f2_0_ndotv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);\n\tfloat
+        _fill_rim_fresnel_f2_0_rim_mask = pow((1.0 - _fill_rim_fresnel_f2_0_ndotv),
+        fill_rim_power);\n\tEMISSION = (EMISSION + (fill_rim_color.rgb * (_fill_rim_fresnel_f2_0_rim_mask
+        * fill_rim_intensity)));\n}"
+      lang: gdshader
+      badge: GDSHADER
+- id: topic_07_macros_features_and_tree_shaking
+  title: Compile-Time Macros, feature Specialization & Dead-Uniform Tree-Shaking
+  summary: Unrolling loops with Crystal macros, specializing variants with feature/when_feature,
+    and automatically pruning unreachable uniforms and helpers.
+  content: Traditional uber-shaders litter code with `#ifdef` tangles and keep dead
+    uniforms bound in the material inspector even when features are disabled. CRShader
+    evaluates `macro`, `{% for %}`, `{% if IS_GLSL %}`, `feature`, and `when_feature`
+    / `unless_feature` at compile time, and then runs `TreeShaker` to strip **both**
+    unreachable helper functions and unused uniforms/samplers!
+  comparisons:
+  - title: 7A. Macro Tap Unrolling & Specialized High vs Low Variants (`crshader matrix`
+      / `-D`)
+    description: In the Low variant (`-D rim=false -D quality=low`), `sample_detail`,
+      `detail_tex`, AND `rim_color` are completely eliminated from the compiled shader.
+    columns:
+    - label: Specialized Source (.crshader)
+      code: "shader_type :spatial\n\nfeature :rim, default: true\nfeature :quality,
+        options: [:low, :high], default: :high\n\nproperty base_color : Color = Color.hex(\"#3b82f6\"),
+        hint: :source_color\nproperty rim_color : Color = Color.hex(\"#93c5fd\"),
+        hint: :source_color\nsampler detail_tex, filter: :linear\n\nmacro tap_offset(idx)\n
+        \ vec2({{ idx }} * 0.002, 0.0)\nend\n\ndef sample_detail(uv : Vec2) : Vec3\n
+        \ acc = vec3(0.0, 0.0, 0.0)\n  {% for tap in -1..1 %}\n    acc += detail_tex.sample(uv
+        + tap_offset({{ tap }})).rgb\n  {% end %}\n  acc / 3.0\nend\n\ndef fragment\n
+        \ col = base_color.rgb\n  when_feature :quality, :high do\n    col *= sample_detail(UV)\n
+        \ end\n  when_feature :rim do\n    col += rim_color.rgb * ((1.0 - dot(NORMAL,
+        VIEW).saturate) ** 3.0)\n  end\n  ALBEDO = col\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: High Variant (rim=true, quality=high)
+      code: "shader_type spatial;\n\nuniform vec4 base_color : source_color = vec4(0.2314,
+        0.5098, 0.9647, 1.0);\nuniform vec4 rim_color : source_color = vec4(0.5765,
+        0.7725, 0.9922, 1.0);\nuniform sampler2D detail_tex : filter_linear;\n\nvec3
+        sample_detail(vec2 uv) {\n\tvec3 acc = vec3(0.0, 0.0, 0.0);\n\tacc += texture(detail_tex,
+        (uv + vec2((-1 * 0.002), 0.0))).rgb;\n\tacc += texture(detail_tex, (uv + vec2((0
+        * 0.002), 0.0))).rgb;\n\tacc += texture(detail_tex, (uv + vec2((1 * 0.002),
+        0.0))).rgb;\n\treturn (acc / 3.0);\n}\n\nfloat saturate(float x) {\n\treturn
+        clamp(x, 0.0, 1.0);\n}\n\nvoid fragment() {\n\tvec3 col = base_color.rgb;\n\tcol
+        *= sample_detail(UV);\n\tcol += (rim_color.rgb * pow((1.0 - clamp(dot(NORMAL,
+        VIEW), 0.0, 1.0)), 3.0));\n\tALBEDO = col;\n}"
+      lang: gdshader
+      badge: 'VARIANT: HIGH'
+    - label: Low Variant (rim=false, quality=low)
+      code: "shader_type spatial;\n\nuniform vec4 base_color : source_color = vec4(0.2314,
+        0.5098, 0.9647, 1.0);\n\nvoid fragment() {\n\tvec3 col = base_color.rgb;\n\tALBEDO
+        = col;\n}"
+      lang: gdshader
+      badge: 'VARIANT: LOW'
+    notes:
+    - Run `crshader matrix shader.crshader -o variants/` to precompile the Cartesian
+      product of all boolean and enum `feature` combinations.
+- id: topic_08_gradients_and_curves
+  title: Analytical Perceptual Oklab Gradients & Smooth Curves
+  summary: Compiling multi-stop color ramps (sRGB, Linear, Oklab) and easing curves
+    into zero-texture, branchless GPU functions.
+  content: Sampling 1D `GradientTexture1D` / `CurveTexture` resources consumes texture
+    binding slots and suffers from 8-bit banding. CRShader's `gradient` and `curve`
+    directives convert hex/RGBA color stops into **Oklab** (or linear/sRGB) at compile
+    time and synthesize pure ALU functions (`mix` + `smoothstep` / `step` / linear)
+    with cubic Oklab-to-linear-RGB reconstruction—working identically in `.gdshader`
+    and `.glsl` compute shaders!
+  comparisons:
+  - title: 8A. Perceptual `:oklab` Color Ramp & Smooth Scalar Curve Across GDShader
+      & GLSL
+    description: Hex stops are pre-converted to Oklab coordinates at compile time
+      so GPU execution performs only branchless vector `mix` and cubic LMS matrix
+      math.
+    columns:
+    - label: CRShader Gradient & Curve (.crshader)
+      code: "shader_type :canvas_item\n\ngradient :ember_ramp, {\n  0.0 => \"#090d16\",\n
+        \ 0.5 => \"#ef4444\",\n  1.0 => \"#fef08a\",\n}, space: :oklab, interp: :smooth\n\ncurve
+        :pulse_env, {\n  0.0  => 0.0,\n  0.35 => 1.0,\n  1.0  => 0.1,\n}, interp:
+        :smooth\n\ndef fragment\n  t = (UV.x * pulse_env(fract(TIME * 0.5))).saturate\n
+        \ COLOR = ember_ramp(t)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Godot 4 (.gdshader)
+      code: "shader_type canvas_item;\n\nfloat saturate(float x) {\n\treturn clamp(x,
+        0.0, 1.0);\n}\n\nfloat pulse_env(float t) {\n\tfloat tc = clamp(t, 0.000000,
+        1.000000);\n\tfloat acc = 0.000000;\n\tacc = mix(acc, 1.000000, smoothstep(0.000000,
+        0.350000, tc));\n\tacc = mix(acc, 0.100000, smoothstep(0.350000, 1.000000,
+        tc));\n\treturn acc;\n}\n\nvec4 ember_ramp(float t) {\n\tfloat tc = clamp(t,
+        0.000000, 1.000000);\n\tvec4 acc = vec4(0.159628, -0.001568, -0.020271, 1.000000);\n\tacc
+        = mix(acc, vec4(0.636834, 0.187864, 0.088929, 1.000000), smoothstep(0.000000,
+        0.500000, tc));\n\tacc = mix(acc, vec4(0.945102, -0.024867, 0.121791, 1.000000),
+        smoothstep(0.500000, 1.000000, tc));\n\tfloat l_ = ((acc.x + (0.39633778 *
+        acc.y)) + (0.21580376 * acc.z));\n\tfloat m_ = ((acc.x - (0.10556135 * acc.y))
+        - (0.06385417 * acc.z));\n\tfloat s_ = ((acc.x - (0.08948418 * acc.y)) - (1.29148555
+        * acc.z));\n\tfloat l_c = ((l_ * l_) * l_);\n\tfloat m_c = ((m_ * m_) * m_);\n\tfloat
+        s_c = ((s_ * s_) * s_);\n\tfloat r_lin = (((4.07674166 * l_c) - (3.30771159
+        * m_c)) + (0.23096993 * s_c));\n\tfloat g_lin = (((-1.26843800 * l_c) + (2.60975740
+        * m_c)) - (0.34131940 * s_c));\n\tfloat b_lin = (((-0.00419609 * l_c) - (0.70341861
+        * m_c)) + (1.70761470 * s_c));\n\treturn vec4(max(vec3(r_lin, g_lin, b_lin),
+        vec3(0.0, 0.0, 0.0)), acc.w);\n}\n\nvoid fragment() {\n\tfloat t = clamp((UV.x
+        * pulse_env(fract((TIME * 0.5)))), 0.0, 1.0);\n\tCOLOR = ember_ramp(t);\n}"
+      lang: gdshader
+      badge: GDSHADER
+    - label: Vulkan Compute (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(rgba16f, set = 0, binding = 0) uniform image2D out_img;\n\nfloat
+        saturate(float x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\nfloat pulse_env(float
+        t) {\n\tfloat tc = clamp(t, 0.000000, 1.000000);\n\tfloat acc = 0.000000;\n\tacc
+        = mix(acc, 1.000000, smoothstep(0.000000, 0.350000, tc));\n\tacc = mix(acc,
+        0.100000, smoothstep(0.350000, 1.000000, tc));\n\treturn acc;\n}\n\nvec4 ember_ramp(float
+        t) {\n\tfloat tc = clamp(t, 0.000000, 1.000000);\n\tvec4 acc = vec4(0.159628,
+        -0.001568, -0.020271, 1.000000);\n\tacc = mix(acc, vec4(0.636834, 0.187864,
+        0.088929, 1.000000), smoothstep(0.000000, 0.500000, tc));\n\tacc = mix(acc,
+        vec4(0.945102, -0.024867, 0.121791, 1.000000), smoothstep(0.500000, 1.000000,
+        tc));\n\tfloat l_ = ((acc.x + (0.39633778 * acc.y)) + (0.21580376 * acc.z));\n\tfloat
+        m_ = ((acc.x - (0.10556135 * acc.y)) - (0.06385417 * acc.z));\n\tfloat s_
+        = ((acc.x - (0.08948418 * acc.y)) - (1.29148555 * acc.z));\n\tfloat l_c =
+        ((l_ * l_) * l_);\n\tfloat m_c = ((m_ * m_) * m_);\n\tfloat s_c = ((s_ * s_)
+        * s_);\n\tfloat r_lin = (((4.07674166 * l_c) - (3.30771159 * m_c)) + (0.23096993
+        * s_c));\n\tfloat g_lin = (((-1.26843800 * l_c) + (2.60975740 * m_c)) - (0.34131940
+        * s_c));\n\tfloat b_lin = (((-0.00419609 * l_c) - (0.70341861 * m_c)) + (1.70761470
+        * s_c));\n\treturn vec4(max(vec3(r_lin, g_lin, b_lin), vec3(0.0, 0.0, 0.0)),
+        acc.w);\n}\n\nvoid main() {\n\tivec2 px = ivec2(gl_GlobalInvocationID.xy);\n\tfloat
+        u = (float(px.x) / 512.0);\n\tfloat t = clamp((u * pulse_env(0.35)), 0.0,
+        1.0);\n\timageStore(out_img, px, ember_ramp(t));\n}"
+      lang: glsl
+      badge: GLSL 450
+    notes:
+    - When you do need CPU evaluation or a baked texture, `CrShader::ProceduralLUT.sample_gradient_bytes`
+      evaluates the exact same Oklab math on the CPU.
+- id: topic_09_visual_inspector_and_release_stripping
+  title: One-Line inspect() Visual Debugger vs --release -O Stripping
+  summary: Live in-viewport variable heatmaps and NaN/Inf detection during development,
+    stripped to zero GPU cost in production release builds.
+  content: 'Debugging intermediate shader values usually means commenting out final
+    math and writing temporary `COLOR = vec4(...)` hacks. Wrapping any expression
+    or variable in `inspect(:label, expr)`:
+
+    1. Captures the intermediate value without altering downstream math.
+
+    2. Injects a `Debug` Inspector group with `uniform int debug_view : hint_enum("Off",
+    ..., "NaN_Inf_Detector")`.
+
+    3. Renders type-aware visualizations: **magenta checkerboard** on `NaN`/`Inf`,
+    **cyan heatmap** for negative floats (`< 0.0`), **amber/red heatmap** for HDR
+    values (`> 1.0`), and UV cell grids for `vec2`.
+
+    4. Strips **100% of probes and the `debug_view` uniform** when compiled with `--release`
+    (`-r`), while `-O` (`--optimize-names`) minifies local variables to `_v0`, `_v1`!'
+  comparisons:
+  - title: 9A. Development Build (`debug_view` Heatmaps) vs Production Build (`crshader
+      build --release -O`)
+    description: Compare the full live-selectable inspector instrumentation in development
+      against the clean, zero-overhead production output.
+    columns:
+    - label: CRShader Source (.crshader)
+      code: "shader_type :canvas_item\n\nproperty threshold : Float32 = 0.5\n\ndef
+        fragment\n  warped_uv = inspect(:uv_grid, UV * 4.0)\n  radial_mask = 1.0 -
+        length(UV - vec2(0.5, 0.5)) * 2.0\n  inspect(:mask_heat, radial_mask - threshold)\n
+        \ COLOR = vec4(vec3(fract(warped_uv.x) * radial_mask), 1.0)\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Development Output (Default)
+      code: "shader_type canvas_item;\n\nuniform float threshold = 0.5;\ngroup_uniforms
+        Debug;\n/** Live visual variable inspector (stripped automatically in --release)
+        */\nuniform int debug_view : hint_enum(\"Off\", \"uv_grid\", \"mask_heat\",
+        \"NaN_Inf_Detector\") = 0;\ngroup_uniforms;\n\nvoid fragment() {\n\tvec2 _cr_dbg_1
+        = vec2(0.0, 0.0);\n\tfloat _cr_dbg_2 = 0.0;\n\t_cr_dbg_1 = (UV * 4.0);\n\tvec2
+        warped_uv = _cr_dbg_1;\n\tfloat radial_mask = (1.0 - (length((UV - vec2(0.5,
+        0.5))) * 2.0));\n\t_cr_dbg_2 = (radial_mask - threshold);\n\tCOLOR = vec4(vec3((fract(warped_uv.x)
+        * radial_mask)), 1.0);\n\tvec2 _cr_px;\n\tvec3 _cr_chk;\n\tvec3 _cr_dbg_rgb;\n\tfloat
+        _cr_grid;\n\tvec3 _cr_ref;\n\tfloat _cr_luma;\n\tif ((debug_view > 0)) {\n\t\t_cr_px
+        = FRAGCOORD.xy;\n\t\t_cr_chk = (((mod((floor((_cr_px.x * 0.125)) + floor((_cr_px.y
+        * 0.125))), 2.0) < 0.5)) ? (vec3(1.0, 0.0, 1.0)) : (vec3(0.12, 0.0, 0.12)));\n\t\t_cr_dbg_rgb
+        = vec3(0.0, 0.0, 0.0);\n\t\tif ((debug_view == 1)) {\n\t\t\tif ((any(isnan(_cr_dbg_1))
+        || any(isinf(_cr_dbg_1)))) {\n\t\t\t\t_cr_dbg_rgb = _cr_chk;\n\t\t\t} else
+        {\n\t\t\t\t_cr_grid = (max(step(0.94, fract((_cr_dbg_1.x * 8.0))), step(0.94,
+        fract((_cr_dbg_1.y * 8.0)))) * 0.12);\n\t\t\t\t_cr_dbg_rgb = clamp((vec3(fract(_cr_dbg_1.x),
+        fract(_cr_dbg_1.y), 0.08) + vec3(_cr_grid, _cr_grid, _cr_grid)), vec3(0.0,
+        0.0, 0.0), vec3(1.0, 1.0, 1.0));\n\t\t\t}\n\t\t} else if ((debug_view == 2))
+        {\n\t\t\tif ((isnan(_cr_dbg_2) || isinf(_cr_dbg_2))) {\n\t\t\t\t_cr_dbg_rgb
+        = _cr_chk;\n\t\t\t} else if ((_cr_dbg_2 < 0.0)) {\n\t\t\t\t_cr_dbg_rgb = mix(vec3(0.05,
+        0.18, 0.48), vec3(0.0, 0.72, 1.0), clamp(-_cr_dbg_2, 0.0, 1.0));\n\t\t\t}
+        else if ((_cr_dbg_2 > 1.0)) {\n\t\t\t\t_cr_dbg_rgb = mix(vec3(1.0, 0.85, 0.2),
+        vec3(1.0, 0.22, 0.0), clamp(((_cr_dbg_2 - 1.0) * 0.25), 0.0, 1.0));\n\t\t\t}
+        else {\n\t\t\t\t_cr_dbg_rgb = vec3(_cr_dbg_2, _cr_dbg_2, _cr_dbg_2);\n\t\t\t}\n\t\t}
+        else if ((debug_view == 3)) {\n\t\t\t_cr_ref = COLOR.rgb;\n\t\t\tif ((any(isnan(_cr_ref))
+        || any(isinf(_cr_ref)))) {\n\t\t\t\t_cr_dbg_rgb = _cr_chk;\n\t\t\t} else {\n\t\t\t\t_cr_luma
+        = (dot(clamp(_cr_ref, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)), vec3(0.2126,
+        0.7152, 0.0722)) * 0.25);\n\t\t\t\t_cr_dbg_rgb = vec3(_cr_luma, _cr_luma,
+        _cr_luma);\n\t\t\t}\n\t\t}\n\t\tCOLOR = vec4(_cr_dbg_rgb, 1.0);\n\t}\n}"
+      lang: gdshader
+      badge: DEV GDSHADER
+    - label: Production Output (--release -O)
+      code: "shader_type canvas_item;\n\nuniform float threshold = 0.5;\n\nvoid fragment()
+        {\n\tvec2 _v0 = (UV * 4.0);\n\tfloat _v1 = (1.0 - (length((UV - vec2(0.5,
+        0.5))) * 2.0));\n\tCOLOR = vec4(vec3((fract(_v0.x) * _v1)), 1.0);\n}"
+      lang: gdshader
+      badge: RELEASE -O
+- id: topic_10_compositor_compute_and_particles
+  title: Godot 4.8 compositor_effect, compute_kernel & particle_simulation
+  summary: High-level DSLs for RenderingDevice post-processing passes, scene camera
+    UBOs, and std430 GPU particle simulations.
+  content: 'Authoring raw Vulkan compute shaders for Godot 4.8''s `CompositorEffect`
+    or `RenderingDevice` normally requires manual descriptor set indices, `std140`
+    camera matrix UBO alignment, pixel bounds guards, and packed `vec4` SSBO unpacking.
+    CRShader automates all of it:
+
+    - **`compositor_effect`**: Declares workgroup sizes, binds `color_image` (`set
+    = 0, binding = 0`), `depth_texture` (`binding = 1`), `normal_roughness_texture`
+    (`binding = 2`), and `CrShaderSceneData` (`binding = 3` whenever `INV_PROJECTION_MATRIX`,
+    `VIEWPORT_SIZE`, or `TIME` is used).
+
+    - **`particle_simulation` & `step_particles`**: Synthesizes the `std430` `ParticleBuffer`
+    SSBO, `SimParams` push constant, bounds check, `pos`/`vel`/`life` unpacking/repacking,
+    and pulls physics helpers from `std/particles`.'
+  comparisons:
+  - title: 10A. Depth & Scene-Matrix `compositor_effect` -> Vulkan GLSL 450
+    description: Referencing `INV_PROJECTION_MATRIX` and `TIME` automatically synthesizes
+      the 16-byte-padded `CrShaderSceneData` `std140` uniform buffer at `set = 0,
+      binding = 3`.
+    columns:
+    - label: Compositor Pass (.crshader)
+      code: "compositor_effect :post_transparent do\n  access :color, :depth, :scene_data\n
+        \ property pulse_strength : Float32 = 0.25, range: 0.0..1.0\n\n  process_pixel
+        do |coord, uv, color|\n    raw_d = texture(depth_texture, uv).r\n    ndc =
+        vec4(uv * 2.0 - vec2(1.0, 1.0), raw_d, 1.0)\n    view_pos = INV_PROJECTION_MATRIX
+        * ndc\n    linear_z = -view_pos.z / view_pos.w\n    wave = sin(linear_z *
+        0.5 - TIME * 3.0) * 0.5 + 0.5\n    vec4(color.rgb + vec3(0.1, 0.4, 0.8) *
+        (wave * pulse_strength), color.a)\n  end\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Generated Vulkan GLSL (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(set = 0, binding = 3, std140) uniform CrShaderSceneData
+        {\n\tmat4 INV_PROJECTION_MATRIX;\n\tmat4 PROJECTION_MATRIX;\n\tmat4 INV_VIEW_MATRIX;\n\tmat4
+        VIEW_MATRIX;\n\tvec2 VIEWPORT_SIZE;\n\tfloat TIME;\n\tfloat _crshader_scene_pad0;\n};\n\nlayout(rgba16f,
+        set = 0, binding = 0) uniform image2D color_image;\n\nlayout(set = 0, binding
+        = 1) uniform sampler2D depth_texture;\n\nlayout(push_constant, std430) uniform
+        CrShaderParams {\n\tfloat pulse_strength;\n};\n\nvoid main() {\n\tivec2 coord
+        = ivec2(gl_GlobalInvocationID.xy);\n\tivec2 size = imageSize(color_image);\n\tif
+        (((coord.x >= size.x) || (coord.y >= size.y))) {\n\t\treturn;\n\t}\n\tvec2
+        uv = ((vec2(float(coord.x), float(coord.y)) + vec2(0.5, 0.5)) / vec2(float(size.x),
+        float(size.y)));\n\tvec4 color = imageLoad(color_image, coord);\n\tfloat raw_d
+        = texture(depth_texture, uv).r;\n\tvec4 ndc = vec4(((uv * 2.0) - vec2(1.0,
+        1.0)), raw_d, 1.0);\n\tvec4 view_pos = (INV_PROJECTION_MATRIX * ndc);\n\tfloat
+        linear_z = (-view_pos.z / view_pos.w);\n\tfloat wave = ((sin(((linear_z *
+        0.5) - (TIME * 3.0))) * 0.5) + 0.5);\n\tvec4((color.rgb + (vec3(0.1, 0.4,
+        0.8) * (wave * pulse_strength))), color.a);\n\timageStore(color_image, coord,
+        color);\n}"
+      lang: glsl
+      badge: COMPOSITOR GLSL
+  - title: 10B. Declarative `particle_simulation` & `step_particles` -> Vulkan Compute
+      GLSL
+    description: Unpacks `positions[idx]` (`.xyz` + `life` in `.w`) and `velocities[idx]`,
+      injects `attract_point` / `apply_linear_drag` / `integrate_euler` from `std/particles`,
+      and writes back updated state.
+    columns:
+    - label: Particle Simulation (.crshader)
+      code: "particle_simulation 64 do\n  step_particles do |idx, pos, vel, life|\n
+        \   life -= sim_params.delta_time\n    pull = attract_point(pos, vec3(0.0,
+        3.0, 0.0), 12.0, 25.0)\n    vel = apply_linear_drag(\n      vel + (sim_params.gravity
+        + pull) * sim_params.delta_time,\n      sim_params.drag,\n      sim_params.delta_time\n
+        \   )\n    pos = integrate_euler(pos, vel, sim_params.delta_time)\n  end\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Generated Compute Kernel (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 64, local_size_y = 1, local_size_z
+        = 1) in;\n\nlayout(set = 0, binding = 0, std430) restrict buffer ParticleBuffer
+        {\n\tvec4 positions[];\n\tvec4 velocities[];\n\tvec4 colors[];\n} particle_buffer;\n\nlayout(push_constant,
+        std430) uniform SimParams {\n\tfloat delta_time;\n\tuint particle_count;\n\tvec3
+        gravity;\n\tfloat drag;\n\tfloat turbulence;\n\tfloat time;\n} sim_params;\n\nvec3
+        attract_point(vec3 pos, vec3 target, float strength, float radius) {\n\tvec3
+        diff = (target - pos);\n\tfloat dist = max(length(diff), 0.0001);\n\tfloat
+        atten = clamp((1.0 - (dist / max(radius, 0.0001))), 0.0, 1.0);\n\treturn ((diff
+        / dist) * ((strength * atten) * atten));\n}\n\nvec3 apply_linear_drag(vec3
+        vel, float drag, float dt) {\n\treturn (vel * max(0.0, (1.0 - (drag * dt))));\n}\n\nvec3
+        integrate_euler(vec3 pos, vec3 vel, float dt) {\n\treturn (pos + (vel * dt));\n}\n\nvoid
+        main() {\n\tuint idx = gl_GlobalInvocationID.x;\n\tif ((idx >= sim_params.particle_count))
+        {\n\t\treturn;\n\t}\n\tvec4 __pos_life = particle_buffer.positions[idx];\n\tvec4
+        __vel_max = particle_buffer.velocities[idx];\n\tvec3 pos = __pos_life.xyz;\n\tfloat
+        life = __pos_life.w;\n\tvec3 vel = __vel_max.xyz;\n\tlife -= sim_params.delta_time;\n\tvec3
+        pull = attract_point(pos, vec3(0.0, 3.0, 0.0), 12.0, 25.0);\n\tvel = apply_linear_drag((vel
+        + ((sim_params.gravity + pull) * sim_params.delta_time)), sim_params.drag,
+        sim_params.delta_time);\n\tpos = integrate_euler(pos, vel, sim_params.delta_time);\n\tparticle_buffer.positions[idx]
+        = vec4(pos, life);\n\tparticle_buffer.velocities[idx] = vec4(vel, __vel_max.w);\n}"
+      lang: glsl
+      badge: COMPUTE GLSL
+- id: topic_11_gdshaderinc_and_multi_target_emit
+  title: Reusable .gdshaderinc Headers & Multi-Target emit_target
+  summary: 'Emitting #ifndef-guarded .gdshaderinc libraries and multiple feature-specialized
+    shader files from a single .crshader source.'
+  content: 'With `emit_target`, a single `.crshader` file can simultaneously generate
+    a reusable `.gdshaderinc` header (for mixed GDScript/GDShader teams) **and** multiple
+    specialized `.gdshader` or `.glsl` variants whenever you save in the Godot 4.8
+    Shader Editor tab or run `crshader bundle`:
+
+    - **`.gdshaderinc` Emitter**: Strips `shader_type`, `render_mode`, and processor
+    entry points (`vertex`/`fragment`/`light`), closes trailing `group_uniforms;`,
+    and wraps structs, constants, uniforms, varyings, and helpers in `#ifndef <NAME>_GDSHADERINC`.
+
+    - **Signature Reader**: Consumer `.crshader` files that call `include "res://shared/cel_lighting.gdshaderinc"`
+    automatically parse the header''s structs, constants, and function return types
+    for type inference!'
+  comparisons:
+  - title: 11A. Single `emit_target` Source -> `.gdshaderinc` Library Header + Specialized
+      Hero `.gdshader`
+    description: Saving `cel.crshader` emits `shared/cel_lighting.gdshaderinc`, `cel_standard.gdshader`
+      (with `rim_energy` pruned), and `cel_hero.gdshader` in one pass.
+    columns:
+    - label: Multi-Target Source (cel.crshader)
+      code: "emit_target \"shared/cel_lighting.gdshaderinc\"\nemit_target \"cel_standard.gdshader\",
+        rim_boost_enabled: false\nemit_target \"cel_hero.gdshader\", rim_boost_enabled:
+        true\n\nshader_type :spatial\n\nfeature :rim_boost_enabled, default: false\n\ngroup
+        \"CelShading\" do\n  property shadow_tint : Color = Color.hex(\"#1e1b4b\"),
+        hint: :source_color\n  property rim_energy : Float32 = 1.8, range: 0.0..4.0\nend\n\ndef
+        quantize_band(ndotl : Float32) : Float32\n  smoothstep(0.35, 0.40, ndotl)\nend\n\ndef
+        fragment\n  band = quantize_band(dot(NORMAL, VIEW).saturate)\n  col = mix(shadow_tint.rgb,
+        vec3(0.95, 0.96, 1.0), band)\n  when_feature :rim_boost_enabled do\n    col
+        += vec3(0.3, 0.7, 1.0) * ((1.0 - band) * rim_energy)\n  end\n  ALBEDO = col\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: shared/cel_lighting.gdshaderinc
+      code: "#ifndef CEL_GDSHADERINC\n#define CEL_GDSHADERINC\n\ngroup_uniforms CelShading;\nuniform
+        vec4 shadow_tint : source_color = vec4(0.1176, 0.1059, 0.2941, 1.0);\nuniform
+        float rim_energy : hint_range(0.0, 4.0) = 1.8;\ngroup_uniforms;\n\nfloat quantize_band(float
+        ndotl) {\n\treturn smoothstep(0.35, 0.40, ndotl);\n}\n\nfloat saturate(float
+        x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\n#endif // CEL_GDSHADERINC"
+      lang: gdshaderinc
+      badge: GDSHADERINC
+    - label: cel_hero.gdshader (rim_boost=true)
+      code: "shader_type spatial;\n\ngroup_uniforms CelShading;\nuniform vec4 shadow_tint
+        : source_color = vec4(0.1176, 0.1059, 0.2941, 1.0);\nuniform float rim_energy
+        : hint_range(0.0, 4.0) = 1.8;\ngroup_uniforms;\n\nfloat quantize_band(float
+        ndotl) {\n\treturn smoothstep(0.35, 0.40, ndotl);\n}\n\nfloat saturate(float
+        x) {\n\treturn clamp(x, 0.0, 1.0);\n}\n\nvoid fragment() {\n\tfloat band =
+        quantize_band(clamp(dot(NORMAL, VIEW), 0.0, 1.0));\n\tvec3 col = mix(shadow_tint.rgb,
+        vec3(0.95, 0.96, 1.0), band);\n\tcol += (vec3(0.3, 0.7, 1.0) * ((1.0 - band)
+        * rim_energy));\n\tALBEDO = col;\n}"
+      lang: gdshader
+      badge: GDSHADER
+- id: topic_12_host_node_generation
+  title: Automatic Lapis @[Tool] Host Node Synthesis (generate_node)
+  summary: Synthesizing complete Crystal Godot 4 nodes (CompositorEffect, MeshInstance3D,
+    CanvasLayer, ComputeParticles) directly from .crshader uniforms.
+  content: 'Adding `generate_node` inside a `.crshader` file (or running `crshader
+    generate-node scanline.crshader -t compositor`) bridges GPU shaders and CPU gameplay
+    code with zero manual glue:
+
+    - Harvests uniform types, defaults, `# doc comments`, `range:` sliders, `enum`
+    hints, and `ColorPalette` arrays into typed Lapis `@[Export]` properties.
+
+    - For `:compositor`, embeds the compiled `#version 450` GLSL string directly into
+    the Crystal class, implements `_render_callback`, binds `RenderSceneBuffersRD`
+    layers across stereo/mono views, and packs scalar/vector properties at exact `GLSLLayoutPacker`
+    byte offsets!'
+  comparisons:
+  - title: 12A. Single `.crshader` -> Vulkan Compositor `.glsl` + Complete Lapis `@[Tool]`
+      Host Class (`.cr`)
+    description: Notice how `@intensity` (offset `0`) and `@line_count` (offset `4`)
+      in `apply_parameters` match `CrShaderParams` (`std430`) byte-for-byte.
+    columns:
+    - label: CRShader Source (scanline.crshader)
+      code: "generate_node :compositor, \"ScanlineEffect\", \"src/scanline_effect.cr\"\n\ncompositor_effect
+        :post_transparent do\n  access :color\n  # Scanline darkness\n  property intensity
+        : Float32 = 0.25, range: 0.0..1.0, step: 0.05\n  property line_count : Float32
+        = 240.0, range: 60.0..720.0\n\n  process_pixel do |coord, uv, color|\n    wave
+        = sin(uv.y * line_count * 6.28318) * 0.5 + 0.5\n    vec4(color.rgb * (1.0
+        - wave * intensity), color.a)\n  end\nend"
+      lang: crshader
+      badge: SOURCE
+    - label: Compiled Vulkan Pass (.glsl)
+      code: "#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\n\nlayout(rgba16f, set = 0, binding = 0) uniform image2D color_image;\n\nlayout(push_constant,
+        std430) uniform CrShaderParams {\n\tfloat intensity;\n\tfloat line_count;\n};\n\nvoid
+        main() {\n\tivec2 coord = ivec2(gl_GlobalInvocationID.xy);\n\tivec2 size =
+        imageSize(color_image);\n\tif (((coord.x >= size.x) || (coord.y >= size.y)))
+        {\n\t\treturn;\n\t}\n\tvec2 uv = ((vec2(float(coord.x), float(coord.y)) +
+        vec2(0.5, 0.5)) / vec2(float(size.x), float(size.y)));\n\tvec4 color = imageLoad(color_image,
+        coord);\n\tfloat wave = ((sin(((uv.y * line_count) * 6.28318)) * 0.5) + 0.5);\n\tvec4((color.rgb
+        * (1.0 - (wave * intensity))), color.a);\n\timageStore(color_image, coord,
+        color);\n}"
+      lang: glsl
+      badge: GLSL 450
+    - label: Generated Lapis Host (scanline_effect.cr)
+      code: "# =============================================================================\n#
+        Auto-Generated Godot Node: ScanlineEffect < CompositorEffect\n# Synthesized
+        directly from CRShader DSL by CrShader::NodeGenerator\n# =============================================================================\nrequire
+        \"lapis\"\n\nmodule CrShader\n  include Godot\n\n  @[Tool]\n  node ScanlineEffect
+        < CompositorEffect do\n    # Scanline darkness\n    @[Export(range: 0.0_f32..1.0_f32,
+        step: 0.05_f32)]\n    property intensity : Float32 = 0.25_f32\n\n    @[Export(range:
+        60.0_f32..720.0_f32)]\n    property line_count : Float32 = 240.0_f32\n\n    EMBEDDED_GLSL
+        = \"#version 450\\n\\nlayout(local_size_x = 8, local_size_y = 8, local_size_z
+        = 1) in;\\n\\nlayout(rgba16f, set = 0, binding = 0) uniform image2D color_image;\\n\\nlayout(push_constant,
+        std430) uniform CrShaderParams {\\n\\tfloat intensity;\\n\\tfloat line_count;\\n};\\n\\nvoid
+        main() {\\n\\tivec2 coord = ivec2(gl_GlobalInvocationID.xy);\\n\\tivec2 size
+        = imageSize(color_image);\\n\\tif (((coord.x >= size.x) || (coord.y >= size.y)))
+        {\\n\\t\\treturn;\\n\\t}\\n\\tvec2 uv = ((vec2(float(coord.x), float(coord.y))
+        + vec2(0.5, 0.5)) / vec2(float(size.x), float(size.y)));\\n\\tvec4 color =
+        imageLoad(color_image, coord);\\n\\tfloat wave = ((sin(((uv.y * line_count)
+        * 6.28318)) * 0.5) + 0.5);\\n\\tvec4((color.rgb * (1.0 - (wave * intensity))),
+        color.a);\\n\\timageStore(color_image, coord, color);\\n}\\n\\n\"\n\n    @compute_helper
+        : ComputeHelper? = nil\n    @params_ubo_rid : Int64 = 0_i64\n\n    def initialize(pointer
+        : Void* = Pointer(Void).null)\n      super(pointer)\n      configure_compositor
+        unless @pointer.null?\n    end\n\n    def configure_compositor : Void\n      call(\"set_access_resolved_color\",
+        true)\n      call(\"set_access_resolved_depth\", false)\n      call(\"set_effect_callback_type\",
+        4)\n    end\n\n    def self._godot_has_virtual_method(method_name : String)
+        : Bool\n      norm = method_name.starts_with?('_') ? method_name : \"_#{method_name}\"\n
+        \     return true if norm == \"_render_callback\"\n      super\n    end\n\n
+        \   def _godot_call_virtual_with_data(method_name : String, args : Void**,
+        ret : Void*) : Void\n      norm = method_name.starts_with?('_') ? method_name
+        : \"_#{method_name}\"\n      if norm == \"_render_callback\" && !args.null?
+        && !args[0].null? && !args[1].null?\n        cb_type = args[0].as(Int64*).value\n
+        \       rd_ptr = args[1].as(Void**).value\n        _render_callback(cb_type,
+        Godot::RenderData.new(rd_ptr)) unless rd_ptr.null?\n        return\n      end\n
+        \     super\n    end\n\n    def _render_callback(effect_callback_type : Int64,
+        render_data : Godot::RenderData) : Void\n      return if render_data.pointer.null?
+        || EMBEDDED_GLSL.empty?\n      helper = @compute_helper || (@compute_helper
+        = ComputeHelper.new)\n      if helper.pipeline_rid <= 0\n        helper.compile_glsl(EMBEDDED_GLSL)\n
+        \     end\n      return if helper.pipeline_rid <= 0\n\n      buffers_base
+        = render_data.get_render_scene_buffers\n      return if buffers_base.pointer.null?\n
+        \     buffers = Godot::RenderSceneBuffersRD.new(buffers_base.pointer)\n      size
+        = buffers.get_internal_size\n      return if size.x <= 0 || size.y <= 0\n\n
+        \     apply_parameters(helper)\n      views = Math.max(buffers.get_view_count,
+        1_i64)\n      views.times do |view|\n        color_tex = buffers.get_color_layer(view)\n
+        \       next if color_tex <= 0\n        helper.bind_image(0, color_tex, set_index:
+        0)\n        helper.dispatch(size.x.to_i32, size.y.to_i32, 1, 8, 8, 1)\n      end\n
+        \   end\n\n    def apply_parameters(helper : ComputeHelper) : Void\n      buf
+        = Bytes.new(16, 0_u8)\n      base_ptr = buf.to_unsafe\n      (base_ptr + 0).as(Float32*).value
+        = @intensity.to_f32\n      (base_ptr + 4).as(Float32*).value = @line_count.to_f32\n
+        \     helper.set_push_constant(buf)\n    end\n  end\nend"
+      lang: crystal
+      badge: LAPIS NODE
+    notes:
+    - '`NodeGenerator` supports 5 host targets: `:mesh3d` (`MeshInstance3D`), `:canvas2d`
+      (`CanvasLayer`), `:compositor` (`CompositorEffect`), `:particles` (`Node3D`
+      compute dispatcher), and `:host` (`Node`).'

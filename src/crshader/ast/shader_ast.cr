@@ -73,8 +73,9 @@ module CrShader
   class StructField
     property name : String
     property type_name : String
+    property default_value : Crystal::ASTNode?
 
-    def initialize(@name : String, @type_name : String)
+    def initialize(@name : String, @type_name : String, @default_value : Crystal::ASTNode? = nil)
     end
   end
 
@@ -83,6 +84,40 @@ module CrShader
     property fields : Array(StructField)
 
     def initialize(@name : String, @fields : Array(StructField) = [] of StructField)
+    end
+  end
+
+  class ClassMethodDecl
+    property name : String
+    property lowered_name : String
+    property def_node : Crystal::Def
+    property is_static : Bool
+    property mutates_self : Bool
+
+    def initialize(
+      @name : String,
+      @lowered_name : String,
+      @def_node : Crystal::Def,
+      @is_static : Bool = false,
+      @mutates_self : Bool = false,
+    )
+    end
+  end
+
+  class ClassDecl
+    property name : String
+    property fields : Array(StructField)
+    property methods : Hash(String, ClassMethodDecl)
+    property initializer : Crystal::Def?
+    property is_imported : Bool
+
+    def initialize(
+      @name : String,
+      @fields : Array(StructField) = [] of StructField,
+      @methods : Hash(String, ClassMethodDecl) = {} of String => ClassMethodDecl,
+      @initializer : Crystal::Def? = nil,
+      @is_imported : Bool = false,
+    )
     end
   end
 
@@ -256,6 +291,7 @@ module CrShader
     property varyings : Array(VaryingDecl) = [] of VaryingDecl
     property constants : Array(ConstantDecl) = [] of ConstantDecl
     property structs : Hash(String, StructDecl) = {} of String => StructDecl
+    property classes : Hash(String, ClassDecl) = {} of String => ClassDecl
     property functions : Hash(String, Crystal::Def) = {} of String => Crystal::Def
     property gradients : Array(GradientDecl) = [] of GradientDecl
     property curves : Array(CurveDecl) = [] of CurveDecl
@@ -304,6 +340,7 @@ module CrShader
     property varyings : Array(VaryingDecl) = [] of VaryingDecl
     property constants : Array(ConstantDecl) = [] of ConstantDecl
     property structs : Hash(String, StructDecl) = {} of String => StructDecl
+    property classes : Hash(String, ClassDecl) = {} of String => ClassDecl
     property buffers : Array(BufferDecl) = [] of BufferDecl
     property push_constants : Array(PushConstantDecl) = [] of PushConstantDecl
     property shared_memories : Array(SharedMemoryDecl) = [] of SharedMemoryDecl

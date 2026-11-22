@@ -54,6 +54,7 @@ module CrShader
       decl.varyings = sub_prog.varyings
       decl.constants = sub_prog.constants
       decl.structs = sub_prog.structs
+      decl.classes = sub_prog.classes
       decl.functions = sub_prog.functions
       decl.gradients = sub_prog.gradients
       decl.curves = sub_prog.curves
@@ -140,12 +141,30 @@ module CrShader
           end
         end
 
-        # 2. Structs & Constants
+        # 2. Structs, Classes & Constants
         trait.structs.each do |sname, sdecl|
           target_sname = prefix ? "#{prefix.camelcase}#{sname}" : sname
           renames[sname] = target_sname if target_sname != sname
           unless program.structs.has_key?(target_sname)
             program.structs[target_sname] = StructDecl.new(target_sname, sdecl.fields.dup)
+          end
+        end
+
+        trait.classes.each do |cname, cdecl|
+          target_cname = prefix ? "#{prefix.camelcase}#{cname}" : cname
+          unless program.classes.has_key?(target_cname)
+            remapped_methods = {} of String => ClassMethodDecl
+            cdecl.methods.each do |mname, mdecl|
+              lowered = ClassLoweringPass.sanitize_method_name(target_cname, mname)
+              remapped_methods[mname] = ClassMethodDecl.new(mname, lowered, mdecl.def_node, mdecl.is_static, mdecl.mutates_self)
+            end
+            program.classes[target_cname] = ClassDecl.new(
+              name: target_cname,
+              fields: cdecl.fields.dup,
+              methods: remapped_methods,
+              initializer: cdecl.initializer,
+              is_imported: true
+            )
           end
         end
 

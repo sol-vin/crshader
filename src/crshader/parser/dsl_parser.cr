@@ -10,6 +10,7 @@ require "../validator/rules"
 require "../extensions/registry"
 require "../language/gradients_and_curves"
 require "./archetypes"
+require "./class_lowering"
 require "../composer/trait_fuser"
 
 module CrShader
@@ -95,10 +96,16 @@ module CrShader
       normalized_source = normalized_source.gsub(/\b(uniform|export|varying|flat_varying|smooth_varying|field)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
         "#{m[1]} #{m[2]} : #{TypeInfo.normalize(m[3])}"
       end
-      normalized_source = normalized_source.gsub(/(^|\n|\brecord\b[^\n]*?,\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
+      normalized_source = normalized_source.gsub(/((?:^|\n)[ \t]*@?)([a-zA-Z_][a-zA-Z0-9_]*)[ \t]+:[ \t]+#{type_pattern}\b(?=[ \t]*(?:$|\r|\n|=|#))/i) do |_, m|
         "#{m[1]}#{m[2]} : #{TypeInfo.normalize(m[3])}"
       end
-      normalized_source = normalized_source.gsub(/(\([^\)]*?\b[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*#{type_pattern}\b/i) do |_, m|
+      normalized_source = normalized_source.gsub(/(\brecord\b[^\r\n]*?,[ \t]*)([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*:[ \t]+#{type_pattern}\b(?![ \t]*\()/i) do |_, m|
+        "#{m[1]}#{m[2]} : #{TypeInfo.normalize(m[3])}"
+      end
+      normalized_source = normalized_source.gsub(/(\([^\)]*?@?\b[a-zA-Z_][a-zA-Z0-9_]*)[ \t]*:[ \t]+#{type_pattern}\b(?![ \t]*\()/i) do |_, m|
+        "#{m[1]} : #{TypeInfo.normalize(m[2])}"
+      end
+      normalized_source = normalized_source.gsub(/(\bdef[ \t]+(?:self\.)?[a-zA-Z_][a-zA-Z0-9_]*[?!]?(?:\((?:[^\r\n()]|\([^\r\n()]*\))*\))?)[ \t]*:[ \t]*#{type_pattern}\b(?![ \t]*\()/i) do |_, m|
         "#{m[1]} : #{TypeInfo.normalize(m[2])}"
       end
 
@@ -138,6 +145,9 @@ module CrShader
 
       # Fuse all `use_trait` blocks into stages, uniforms, and varyings
       TraitFuser.fuse!(@program, @filename, @feature_overrides)
+
+      # Lower `class` / `struct` methods and custom constructors into struct + helper defs
+      ClassLoweringPass.run!(@program)
 
       @program
     end
@@ -1001,21 +1011,72 @@ module CrShader
     end
 
     private def process_struct(node : Crystal::ClassDef)
+      sname = node.name.names.last
       fields = [] of StructField
-      if body = node.body
-        if body.is_a?(Crystal::Expressions)
-          body.expressions.each do |child|
-            if child.is_a?(Crystal::TypeDeclaration)
-              fields << StructField.new(child.var.to_s, child.declared_type.to_s)
+      seen_fields = Set(String).new
+      methods = {} of String => ClassMethodDecl
+      initializer : Crystal::Def? = nil
+
+      body_items = if (body = node.body).is_a?(Crystal::Expressions)
+                     body.as(Crystal::Expressions).expressions
+                   elsif body = node.body
+                     [body]
+                   else
+                     [] of Crystal::ASTNode
+                   end
+
+      body_items.each do |child|
+        case child
+        when Crystal::TypeDeclaration
+          fname = child.var.to_s.sub(/^@+/, "")
+          ftype = TypeInfo.normalize(child.declared_type.to_s)
+          unless seen_fields.includes?(fname)
+            seen_fields.add(fname)
+            fields << StructField.new(fname, ftype, child.value)
+          end
+        when Crystal::Call
+          # `property x : T`, `getter x : T`, `setter x : T`, `field x : T` inside class/struct
+          if ["uniform", "property", "getter", "setter", "field"].includes?(child.name) && (first = child.args.first?).is_a?(Crystal::TypeDeclaration)
+            td = first.as(Crystal::TypeDeclaration)
+            fname = td.var.to_s.sub(/^@+/, "")
+            ftype = TypeInfo.normalize(td.declared_type.to_s)
+            unless seen_fields.includes?(fname)
+              seen_fields.add(fname)
+              fields << StructField.new(fname, ftype, td.value)
             end
           end
-        elsif body.is_a?(Crystal::TypeDeclaration)
-          fields << StructField.new(body.var.to_s, body.declared_type.to_s)
+        when Crystal::Def
+          if child.name == "initialize" && child.receiver.nil?
+            # Harvest `@ivar : Type` shorthand parameters as fields if not declared separately
+            child.args.each do |arg|
+              if arg.external_name.starts_with?("@") || (arg.name.empty? && !arg.external_name.empty?)
+                raw_fn = (arg.external_name.empty? ? arg.name : arg.external_name).sub(/^@+/, "")
+                if !raw_fn.empty? && !seen_fields.includes?(raw_fn)
+                  ftype = arg.restriction ? TypeInfo.normalize(arg.restriction.to_s) : "Float32"
+                  seen_fields.add(raw_fn)
+                  fields << StructField.new(raw_fn, ftype)
+                end
+              end
+            end
+            initializer = child
+          else
+            is_static = !child.receiver.nil?
+            lowered_name = ClassLoweringPass.sanitize_method_name(sname, child.name)
+            methods[child.name] = ClassMethodDecl.new(
+              name: child.name,
+              lowered_name: lowered_name,
+              def_node: child,
+              is_static: is_static
+            )
+          end
         end
       end
-      sname = node.name.to_s
+
       @program.imported_structs.delete(sname)
       @program.structs[sname] = StructDecl.new(sname, fields)
+      unless methods.empty? && initializer.nil? && fields.none? { |f| !f.default_value.nil? }
+        @program.classes[sname] = ClassDecl.new(sname, fields, methods, initializer, is_imported: false)
+      end
     end
 
     private def process_require(node : Crystal::Require)
@@ -1260,11 +1321,23 @@ module CrShader
         end
       end
 
-      # Merge structs, constants, and functions (marked as imported for TreeShaker)
+      # Merge structs, classes, constants, and functions (marked as imported for TreeShaker)
       sub_program.structs.each do |k, v|
         unless @program.structs.has_key?(k)
           @program.structs[k] = v
           @program.imported_structs.add(k)
+        end
+      end
+
+      sub_program.classes.each do |k, cdecl|
+        unless @program.classes.has_key?(k)
+          @program.classes[k] = ClassDecl.new(
+            name: cdecl.name,
+            fields: cdecl.fields.dup,
+            methods: cdecl.methods.dup,
+            initializer: cdecl.initializer,
+            is_imported: true
+          )
         end
       end
 

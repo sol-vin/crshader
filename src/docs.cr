@@ -9,7 +9,7 @@ module CrShader
   #
   # ## Learning Tracks & Topic Index
   #
-  # The documentation is paced into 4 distinct tracks:
+  # The documentation is paced into 5 distinct tracks:
   #
   # ### 1. Getting started (`A_GETTING_STARTED`)
   # <table>
@@ -123,6 +123,24 @@ module CrShader
   #   </tbody>
   # </table>
   #
+  # ### 5. Output comparisons (`E_OUTPUT_COMPARISONS`)
+  # <table>
+  #   <thead>
+  #     <tr>
+  #       <th>Submodule</th>
+  #       <th>Title</th>
+  #       <th>Description</th>
+  #     </tr>
+  #   </thead>
+  #   <tbody>
+  #     <tr>
+  #       <td><code>A_SIDE_BY_SIDE_COMPARISONS</code></td>
+  #       <td><strong>Complete CRShader Side-by-Side Output Atlas</strong></td>
+  #       <td>Side-by-side source vs compiled output comparisons (.gdshader, .gdshaderinc, Vulkan .glsl, --release -O, and Lapis Host Nodes) across all 12 CRShader special feature families.</td>
+  #     </tr>
+  #   </tbody>
+  # </table>
+  #
   module Docs
     # **Quick-Start Commands**: Essential commands for building, running, and testing.
     #
@@ -158,6 +176,9 @@ module CrShader
     # - `D_SHOWCASE_AND_BENCHMARKS::A_PERFORMANCE_BENCHMARKS`: **Compiler Performance & Throughput Benchmarks** &mdash; Quantitative compiler benchmarks measuring AST parsing, transpilation throughput, and memory overhead.
     # - `D_SHOWCASE_AND_BENCHMARKS::B_SHADER_VIEWER`: **Interactive Shader Viewer & Sandbox** &mdash; Standalone showcase application featuring 20+ procedural shaders, 3D mesh switcher, and live sandbox.
     #
+    # ##### 5. Output comparisons (`E_OUTPUT_COMPARISONS`)
+    # - `E_OUTPUT_COMPARISONS::A_SIDE_BY_SIDE_COMPARISONS`: **Complete CRShader Side-by-Side Output Atlas** &mdash; Side-by-side source vs compiled output comparisons (.gdshader, .gdshaderinc, Vulkan .glsl, --release -O, and Lapis Host Nodes) across all 12 CRShader special feature families.
+    #
     def self.topic_02_reading_paths : Nil; end
 
     # **Master Table of Contents**: Complete hierarchical topic index.
@@ -184,6 +205,9 @@ module CrShader
     # - `D_SHOWCASE_AND_BENCHMARKS::A_PERFORMANCE_BENCHMARKS`: **Compiler Performance & Throughput Benchmarks** &mdash; Quantitative compiler benchmarks measuring AST parsing, transpilation throughput, and memory overhead.
     # - `D_SHOWCASE_AND_BENCHMARKS::B_SHADER_VIEWER`: **Interactive Shader Viewer & Sandbox** &mdash; Standalone showcase application featuring 20+ procedural shaders, 3D mesh switcher, and live sandbox.
     #
+    # ##### `E_OUTPUT_COMPARISONS`
+    # - `E_OUTPUT_COMPARISONS::A_SIDE_BY_SIDE_COMPARISONS`: **Complete CRShader Side-by-Side Output Atlas** &mdash; Side-by-side source vs compiled output comparisons (.gdshader, .gdshaderinc, Vulkan .glsl, --release -O, and Lapis Host Nodes) across all 12 CRShader special feature families.
+    #
     def self.topic_03_table_of_contents : Nil; end
 
     # :nodoc:
@@ -207,4 +231,5 @@ require "./docs/c_editor_tooling/b_shader_studio"
 require "./docs/c_editor_tooling/c_cli_and_stubs"
 require "./docs/d_showcase_and_benchmarks/a_performance_benchmarks"
 require "./docs/d_showcase_and_benchmarks/b_shader_viewer"
+require "./docs/e_output_comparisons/a_side_by_side_comparisons"
 {% end %}

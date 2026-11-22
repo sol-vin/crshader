@@ -2,7 +2,7 @@
 
 <!-- carbon:badges -->
 [![CI](https://github.com/sol-vin/crshader/actions/workflows/ci.yml/badge.svg)](https://github.com/sol-vin/crshader/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.66-blue.svg)](https://github.com/sol-vin/crshader/releases)
+[![Version](https://img.shields.io/badge/version-0.1.67-blue.svg)](https://github.com/sol-vin/crshader/releases)
 [![Crystal](https://img.shields.io/badge/crystal-%3E%3D%201.20.0-black.svg)](https://crystal-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Godot](https://img.shields.io/badge/Godot-4.8+-478CBF.svg?logo=godotengine)](https://godotengine.org)
@@ -108,6 +108,8 @@ View the latest automated [Interactive Benchmark Report](https://sol-vin.github.
 
 ## DSL Comparison
 
+Explore the full **[Complete Side-by-Side Output Atlas](https://sol-vin.github.io/crshader/CrShader/Docs/E_OUTPUT_COMPARISONS/A_SIDE_BY_SIDE_COMPARISONS.html)** (`CrShader::Docs::E_OUTPUT_COMPARISONS::A_SIDE_BY_SIDE_COMPARISONS`) for side-by-side comparisons of classes & methods, fluent UFCS chains, archetypes, hygienic traits, analytical Oklab gradients, `inspect()` visual debug heatmaps, `--release -O` stripping, `.gdshaderinc` headers, Vulkan GLSL 450 compute kernels, and Lapis host node generation.
+
 <table>
   <thead>
     <tr>
@@ -141,6 +143,52 @@ void fragment() {
     vec2 uv = UV + vec2(TIME * speed * 0.1, 0.0);
     vec4 col = texture(TEXTURE, uv) * tint;
     COLOR = col;
+}</pre>
+      </td>
+    </tr>
+    <tr>
+      <td>
+<pre lang="crystal">shader_type :spatial
+
+class FresnelRim
+  color : Vec3
+  power : Float32
+
+  def boost!(k : Float32) : Void
+    @power *= k
+  end
+
+  def evaluate(n : Vec3, v : Vec3) : Vec3
+    @color * ((1.0 - dot(n, v).saturate) ** @power)
+  end
+end
+
+def fragment
+  rim = FresnelRim.new(vec3(0.35, 0.8, 1.0), 2.5)
+  rim.boost!(1.2)
+  EMISSION = rim.evaluate(NORMAL, VIEW)
+end</pre>
+      </td>
+      <td>
+<pre lang="glsl">shader_type spatial;
+
+struct FresnelRim {
+    vec3 color;
+    float power;
+};
+
+void FresnelRim_boost(inout FresnelRim _self, float k) {
+    _self.power *= k;
+}
+
+vec3 FresnelRim_evaluate(FresnelRim _self, vec3 n, vec3 v) {
+    return (_self.color * pow((1.0 - clamp(dot(n, v), 0.0, 1.0)), _self.power));
+}
+
+void fragment() {
+    FresnelRim rim = FresnelRim(vec3(0.35, 0.8, 1.0), 2.5);
+    FresnelRim_boost(rim, 1.2);
+    EMISSION = FresnelRim_evaluate(rim, NORMAL, VIEW);
 }</pre>
       </td>
     </tr>
