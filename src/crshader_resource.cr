@@ -120,9 +120,13 @@ module CrShader
     property crshader_source : String = ""
 
     @[Export]
-    property shader_target : String = "gdshader"
+    property shader_target : String = "auto"
 
     property file_path : String = ""
+    property last_compiled_code : String = ""
+    property last_resolved_target : ShaderTarget = ShaderTarget::GDShader
+    property last_error_message : String = ""
+    property last_error_line : Int32 = 0
     property active_features : Hash(String, FeatureValue) = {} of String => FeatureValue
     property strip_debug_inspects : Bool = false
 
@@ -172,22 +176,96 @@ module CrShader
     def recompile : Bool
       return false if @crshader_source.strip.empty?
       begin
-        target = ShaderTarget.from_string?(@shader_target)
+        explicit_t = (@shader_target.strip.empty? || @shader_target.downcase == "auto") ? nil : ShaderTarget.from_string?(@shader_target)
+        fs_file = resolve_disk_path(@file_path)
+        eff_filename = fs_file.empty? ? (@file_path.empty? ? nil : @file_path) : fs_file
         variant = VariantCache.global.get_or_compile(
           source: @crshader_source,
-          target: target,
+          target: explicit_t,
           features: @active_features,
           strip_debug_inspects: @strip_debug_inspects,
-          filename: @file_path.empty? ? nil : @file_path
+          filename: eff_filename
         )
+        @last_compiled_code = variant.code
+        @last_resolved_target = variant.target
+        @last_error_message = ""
+        @last_error_line = 0
         if variant.target == ShaderTarget::GDShader
           set_code(variant.code) unless @pointer.null?
         end
         true
+      rescue ex : ShaderError
+        @last_error_message = ex.message || "Shader compilation error"
+        @last_error_line = ex.line_number || 1
+        Godot.printerr("[CRShader] Compilation error in #{@file_path}: #{@last_error_message}")
+        false
       rescue ex
-        Godot.printerr("[CRShader] Compilation error in #{@file_path}: #{ex.message}")
+        @last_error_message = ex.message || "Shader compilation error"
+        @last_error_line = 1
+        Godot.printerr("[CRShader] Compilation error in #{@file_path}: #{@last_error_message}")
         false
       end
+    end
+
+    # Compiles all `emit_target` outputs (or default sibling output), optionally writes them to disk,
+    # and hot-reloads any cached `Godot::Shader` resources in `ResourceLoader` so open scenes update live.
+    def compile_and_sync_targets!(write_disk : Bool = true) : Array(Tuple(String, ShaderTarget, String))
+      return [] of Tuple(String, ShaderTarget, String) if @crshader_source.strip.empty?
+      explicit_t = (@shader_target.strip.empty? || @shader_target.downcase == "auto") ? nil : ShaderTarget.from_string?(@shader_target)
+      fs_file = resolve_disk_path(@file_path)
+      eff_filename = fs_file.empty? ? (@file_path.empty? ? nil : @file_path) : fs_file
+
+      compiler = CrShader::Compiler.new(
+        target_override: explicit_t,
+        feature_overrides: @active_features,
+        strip_debug_inspects: @strip_debug_inspects
+      )
+      outputs = compiler.compile_emit_targets(@crshader_source, filename: eff_filename, write_disk: write_disk)
+      if first = outputs.first?
+        @last_compiled_code = first[2]
+        @last_resolved_target = first[1]
+        @last_error_message = ""
+        @last_error_line = 0
+        if first[1] == ShaderTarget::GDShader && !@pointer.null?
+          set_code(first[2])
+        end
+      end
+
+      # Hot-update any loaded Godot::Shader resources in ResourceLoader cache (e.g. outline.gdshader & pattern_replace.gdshader)
+      if !Godot::ProjectSettings.singleton_ptr.null? && !Godot::ResourceLoader.singleton_ptr.null?
+        ps = Godot::ProjectSettings.new(Godot::ProjectSettings.singleton_ptr)
+        rl = Godot::ResourceLoader.new(Godot::ResourceLoader.singleton_ptr)
+        outputs.each do |out_fs_path, tgt, code|
+          next unless tgt == ShaderTarget::GDShader && !out_fs_path.empty?
+          res_path = ps.call_str("localize_path", out_fs_path.gsub('\\', '/'))
+          next unless res_path.starts_with?("res://")
+          has_cached = (rl.call_bool("has_cached", res_path) rescue false)
+          if has_cached
+            if cached_obj = (rl.call_obj("load", res_path, "Shader", 1_i64) rescue nil)
+              if !cached_obj.pointer.null? && cached_obj.pointer != @pointer
+                cached_obj.call("set_code", code) rescue nil
+              end
+            end
+          end
+        end
+      end
+
+      outputs
+    end
+
+    def resolve_disk_path(path : String) : String
+      return "" if path.empty?
+      if path.starts_with?("res://") || path.starts_with?("user://")
+        if !Godot::ProjectSettings.singleton_ptr.null?
+          ps = Godot::ProjectSettings.new(Godot::ProjectSettings.singleton_ptr)
+          gp = ps.call_str("globalize_path", path).gsub('\\', '/')
+          return gp if !gp.empty?
+        end
+        stripped = path.sub(/^(res|user):\/\//, "")
+        return File.expand_path(stripped) if File.exists?(stripped)
+        return stripped
+      end
+      path
     end
 
     # Tool button: Exports compiled GDShader to disk on-demand

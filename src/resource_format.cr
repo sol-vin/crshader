@@ -241,8 +241,17 @@ module CrShader
 
         if inst && inst.is_a?(CrShader::CRShader) && !path.empty? && path.downcase.ends_with?(".crshader")
           resolved = ResourceFormatLoaderCRShader.resolve_file_path(path)
+          if resolved.empty?
+            resolved = inst.resolve_disk_path(path)
+          end
           resolved = path if resolved.empty?
           File.write(resolved, inst.crshader_source)
+          inst.file_path = path if inst.file_path.empty?
+          begin
+            inst.compile_and_sync_targets!(write_disk: true)
+          rescue ex
+            Godot.printerr("[CRShader] Notice while syncing targets on save for #{path}: #{ex.message}")
+          end
           ret.as(Int64*).value = 0_i64 # OK
           return
         end

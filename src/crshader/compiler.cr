@@ -167,11 +167,81 @@ module CrShader
         emitter = GDShaderIncEmitter.new(io, program, filename: filename)
         emitter.emit(alive_helpers, reachable_ids)
       when ShaderTarget::GLSL
-        emitter = GLSLEmitter.new(io, program, godot_compute_header: @godot_compute_header)
+        eff_hdr = @godot_compute_header || program.emit_targets.first?.try(&.godot_compute_header) || false
+        emitter = GLSLEmitter.new(io, program, godot_compute_header: eff_hdr)
         emitter.emit(alive_helpers, reachable_ids)
       end
 
       io.to_s
+    end
+
+    # Compiles all `emit_target` outputs declared in `source` (or the single default sibling
+    # output when no `emit_target` directive is present). Returns `{output_path, target, code}` tuples.
+    def compile_emit_targets(
+      source : String,
+      filename : String? = nil,
+      write_disk : Bool = true,
+    ) : Array(Tuple(String, ShaderTarget, String))
+      probe_parser = DslParser.new(
+        filename: filename,
+        default_target: @target_override || ShaderTarget::GDShader,
+        force_target: !@target_override.nil?,
+        feature_overrides: @feature_overrides
+      )
+      probe_prog = probe_parser.parse(source)
+      results = [] of Tuple(String, ShaderTarget, String)
+      base_dir = filename ? File.dirname(filename.not_nil!) : "."
+
+      if !probe_prog.emit_targets.empty?
+        probe_prog.emit_targets.each do |et|
+          rel = et.output_path
+          out_path = if Path.new(rel).absolute? || filename.nil?
+                       rel.gsub('\\', '/')
+                     else
+                       File.join(base_dir, rel).gsub('\\', '/')
+                     end
+          merged_feats = @feature_overrides.dup
+          et.features.each { |k, v| merged_feats[k] = v }
+          sub_compiler = Compiler.new(
+            target_override: @target_override || et.target,
+            verbose: @verbose,
+            optimize_names: @optimize_names,
+            skip_validation: @skip_validation,
+            feature_overrides: merged_feats,
+            strip_debug_inspects: @strip_debug_inspects,
+            godot_compute_header: @godot_compute_header || et.godot_compute_header
+          )
+          code = sub_compiler.compile_source(source, filename: filename)
+          res_target = sub_compiler.last_program.try(&.target) || et.target || ShaderTarget::GDShader
+          if write_disk && !out_path.empty?
+            pdir = File.dirname(out_path)
+            Dir.mkdir_p(pdir) unless Dir.exists?(pdir)
+            File.write(out_path, code)
+          end
+          results << {out_path, res_target, code}
+        end
+      else
+        code = compile_source(source, filename: filename)
+        res_target = @last_program.try(&.target) || @target_override || ShaderTarget::GDShader
+        out_ext = case res_target
+                  when ShaderTarget::GLSL        then ".glsl"
+                  when ShaderTarget::GDShaderInc then ".gdshaderinc"
+                  else                                ".gdshader"
+                  end
+        out_path = if fn = filename
+                     fn.sub(/\.crshader$/i, out_ext).gsub('\\', '/')
+                   else
+                     ""
+                   end
+        if write_disk && !out_path.empty? && out_path != filename
+          pdir = File.dirname(out_path)
+          Dir.mkdir_p(pdir) unless Dir.exists?(pdir)
+          File.write(out_path, code)
+        end
+        results << {out_path, res_target, code}
+      end
+
+      results
     end
 
     private def apply_setup_gdshader_defaults(program : ShaderProgram)

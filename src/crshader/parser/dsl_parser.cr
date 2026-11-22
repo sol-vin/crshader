@@ -344,6 +344,8 @@ module CrShader
         process_image_call(node)
       when "feature"
         process_feature_call(node)
+      when "emit_target", "output_target"
+        process_emit_target_call(node)
       when "gradient"
         if gdecl = GradientsAndCurves.parse_gradient_call(node)
           @program.gradients.reject! { |g| g.name == gdecl.name }
@@ -384,9 +386,11 @@ module CrShader
     private def process_shader_block(node : Crystal::Call)
       if arg = node.args.first?
         val = node_to_string_or_sym(arg)
-        if st = ShaderType.from_string?(val)
+        if val.downcase == "gdshaderinc" || val.downcase == "include"
+          @program.target = ShaderTarget::GDShaderInc unless @force_target
+        elsif st = ShaderType.from_string?(val)
           @program.shader_type = st
-          if st == ShaderType::Compute
+          if st == ShaderType::Compute && !@force_target
             @program.target = ShaderTarget::GLSL
           end
         end
@@ -399,6 +403,66 @@ module CrShader
           end
         else
           process_top_level_node(block.body)
+        end
+      end
+    end
+
+    private def process_emit_target_call(node : Crystal::Call)
+      return if node.args.empty?
+      out_path = node_to_string_or_sym(node.args[0]).strip
+      return if out_path.empty?
+
+      explicit_target : ShaderTarget? = nil
+      compute_hdr = false
+      feats = {} of String => FeatureValue
+
+      if out_path.downcase.ends_with?(".gdshaderinc")
+        explicit_target = ShaderTarget::GDShaderInc
+      elsif out_path.downcase.ends_with?(".glsl")
+        explicit_target = ShaderTarget::GLSL
+      elsif out_path.downcase.ends_with?(".gdshader")
+        explicit_target = ShaderTarget::GDShader
+      end
+
+      node.named_args.try &.each do |narg|
+        case narg.name
+        when "target"
+          if st = ShaderTarget.from_string?(node_to_string_or_sym(narg.value))
+            explicit_target = st
+          end
+        when "godot_compute_header", "compute_header"
+          compute_hdr = (narg.value.to_s == "true")
+        else
+          val_node = narg.value
+          fval : FeatureValue = case val_node
+                                when Crystal::BoolLiteral
+                                  val_node.value
+                                when Crystal::NumberLiteral
+                                  val_node.value.to_i? || 0
+                                when Crystal::SymbolLiteral
+                                  val_node.value
+                                when Crystal::StringLiteral
+                                  val_node.value
+                                else
+                                  node_to_string_or_sym(val_node)
+                                end
+          feats[narg.name] = fval
+        end
+      end
+
+      decl = EmitTargetDecl.new(
+        output_path: out_path,
+        target: explicit_target,
+        godot_compute_header: compute_hdr,
+        features: feats
+      )
+      @program.emit_targets.reject! { |e| e.output_path == out_path }
+      @program.emit_targets << decl
+
+      # When target was not explicitly forced, adopt primary emit_target's target
+      if !@force_target && @program.emit_targets.size == 1
+        if t = explicit_target
+          @program.target = t
         end
       end
     end

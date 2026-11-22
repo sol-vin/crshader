@@ -23,14 +23,16 @@ module CrShader
 
       # 1. Keywords
       keywords = [
-        "shader", "shader_type", "render_mode", "setup_gdshader",
-        "uniform", "property", "sampler", "instance_uniform", "global_uniform", "varying", "const",
+        "shader", "shader_type", "render_mode", "setup_gdshader", "emit_target", "output_target",
+        "uniform", "property", "sampler", "instance_uniform", "global_uniform",
+        "varying", "flat_varying", "smooth_varying", "const", "constant_decl",
+        "include", "gd_include", "define", "undefine", "undef", "pragma", "default_precision", "precision",
         "feature", "when_feature", "unless_feature", "shader_trait", "use_trait", "gradient", "curve", "inspect",
-        "buffer", "push_constant", "shared", "image2d", "local_size", "require",
-        "group", "subgroup", "field",
+        "buffer", "storage_buffer", "push_constant", "push_constants", "shared", "image2d", "storage_image", "local_size", "require",
+        "group", "uniform_group", "subgroup", "uniform_subgroup", "field", "record",
         "def", "end", "class", "struct", "module", "if", "else", "elsif", "unless",
-        "while", "until", "for", "in", "case", "when", "return", "break", "next",
-        "true", "false", "nil", "macro",
+        "while", "until", "for", "in", "case", "when", "return", "break", "next", "discard",
+        "true", "false", "nil", "macro", "do",
       ]
       keywords.each do |kw|
         highlighter.call("add_keyword_color", kw, kw_color)
@@ -67,10 +69,13 @@ module CrShader
         "EMISSION", "NORMAL_MAP", "NORMAL_MAP_DEPTH", "RIM", "RIM_TINT", "CLEARCOAT",
         "CLEARCOAT_ROUGHNESS", "CLEARCOAT_GLOSS", "ANISOTROPY", "ANISOTROPY_FLOW",
         "AO", "AO_LIGHT_AFFECT", "SSS_STRENGTH", "TRANSMISSION", "BACKLIGHT", "DEPTH",
-        "POINT_SIZE", "POSITION", "TIME", "FRAGCOORD", "FRONT_FACING", "POINT_COORD",
-        "MODEL_MATRIX", "VIEW_MATRIX", "PROJECTION_MATRIX", "MODELVIEW_MATRIX",
-        "INV_VIEW_MATRIX", "INV_PROJECTION_MATRIX", "SCREEN_UV", "SCREEN_PIXEL_SIZE",
-        "TEXTURE_PIXEL_SIZE", "LIGHT", "LIGHT_COLOR", "LIGHT_ENERGY", "LIGHT_POSITION",
+        "POINT_SIZE", "POSITION", "TIME", "PI", "TAU", "E", "FRAGCOORD", "FRONT_FACING", "POINT_COORD",
+        "MODEL_MATRIX", "VIEW_MATRIX", "PROJECTION_MATRIX", "MODELVIEW_MATRIX", "MODELVIEW_NORMAL_MATRIX",
+        "INV_VIEW_MATRIX", "INV_PROJECTION_MATRIX", "NODE_POSITION_WORLD", "CAMERA_POSITION_WORLD",
+        "CAMERA_DIRECTION_WORLD", "VIEWPORT_SIZE", "INSTANCE_ID", "CUSTOM0", "CUSTOM1", "CUSTOM2", "CUSTOM3",
+        "SCREEN_UV", "SCREEN_PIXEL_SIZE", "TEXTURE_PIXEL_SIZE", "VIEW",
+        "LIGHT", "LIGHT_COLOR", "LIGHT_ENERGY", "LIGHT_POSITION", "LIGHT_DIRECTION", "LIGHT_IS_DIRECTIONAL",
+        "ATTENUATION", "DIFFUSE_LIGHT", "SPECULAR_LIGHT",
         "TRANSFORM", "VELOCITY", "CUSTOM", "MASS", "ACTIVE", "RESTART", "LIFETIME", "DELTA",
         "INDEX", "NUMBER", "SEED", "EYEDIR", "HALF_RES_COLOR", "QUARTER_RES_COLOR",
         "WORLD_POSITION", "FOG_COLOR", "DENSITY", "SDF",

@@ -442,10 +442,11 @@ module CrShader
       node_count = 0
 
       files.sort!.each do |f|
-        out_path = default_output_for(f, nil)
-        compiler.compile_file(f, out_path)
-        compiled_count += 1
-        puts "Compiled #{f} -> #{out_path}"
+        emitted = compiler.compile_emit_targets(File.read(f), filename: f, write_disk: true)
+        emitted.each do |out_path, _tgt, _code|
+          compiled_count += 1
+          puts "Compiled #{f} -> #{out_path}"
+        end
 
         if prog = compiler.last_program
           prog.node_generations.each do |ng|

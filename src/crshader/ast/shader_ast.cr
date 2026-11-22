@@ -271,11 +271,27 @@ module CrShader
   record TraitUse, path_or_name : String, prefix : String? = nil
   record InspectProbe, label : String, capture_var : String, glsl_type : String
 
+  class EmitTargetDecl
+    property output_path : String
+    property target : ShaderTarget?
+    property godot_compute_header : Bool
+    property features : Hash(String, FeatureValue)
+
+    def initialize(
+      @output_path : String,
+      @target : ShaderTarget? = nil,
+      @godot_compute_header : Bool = false,
+      @features : Hash(String, FeatureValue) = {} of String => FeatureValue,
+    )
+    end
+  end
+
   class ShaderProgram
     property target : ShaderTarget = ShaderTarget::GDShader
     property shader_type : ShaderType = ShaderType::Spatial
     property render_modes : Array(String) = [] of String
     property setup_gdshader : Bool = false
+    property emit_targets : Array(EmitTargetDecl) = [] of EmitTargetDecl
     property features : Array(FeatureDecl) = [] of FeatureDecl
     property gradients : Array(GradientDecl) = [] of GradientDecl
     property curves : Array(CurveDecl) = [] of CurveDecl

@@ -209,4 +209,77 @@ describe "CrShader std/outline Toolkit & Multi-Cue Outline Shaders" do
     glsl_out.should contain("s.color = ((s.flag) ? (vec3(1.0)) : (vec3(0.0)));")
     glsl_out.should contain("vec3 base_color = s.color;")
   end
+
+  it "compiles multiple emit_target declarations with per-target constants, gdshaderinc target, and godot_compute_header" do
+    multi_src = <<-CR
+      emit_target "outline.gdshader", pattern_default_enabled: false
+      emit_target "pattern_replace.gdshader", pattern_default_enabled: true
+
+      feature :pattern_default_enabled, default: false
+
+      shader :spatial do
+        render_mode :unshaded
+        when_feature :pattern_default_enabled do
+          uniform pattern_enabled : Bool = true
+        end
+        unless_feature :pattern_default_enabled do
+          uniform pattern_enabled : Bool = false
+        end
+      end
+
+      def fragment : Void
+        ALBEDO = pattern_enabled ? vec3(1.0, 0.5, 0.0) : vec3(0.1, 0.2, 0.3)
+      end
+    CR
+
+    compiler = CrShader::Compiler.new
+    outputs = compiler.compile_emit_targets(multi_src, filename: "/tmp/crshader_spec/outline.crshader", write_disk: false)
+    outputs.size.should eq(2)
+
+    outputs[0][0].should eq("/tmp/crshader_spec/outline.gdshader")
+    outputs[0][1].should eq(CrShader::ShaderTarget::GDShader)
+    outputs[0][2].should contain("uniform bool pattern_enabled = false;")
+
+    outputs[1][0].should eq("/tmp/crshader_spec/pattern_replace.gdshader")
+    outputs[1][1].should eq(CrShader::ShaderTarget::GDShader)
+    outputs[1][2].should contain("uniform bool pattern_enabled = true;")
+
+    inc_src = <<-CR
+      emit_target "shared_common.gdshaderinc", target: :gdshaderinc
+
+      shader :gdshaderinc do
+        varying v_uv : Vec2
+      end
+
+      def scale_uv(uv : Vec2) : Vec2
+        return uv * 2.0
+      end
+    CR
+
+    inc_outputs = compiler.compile_emit_targets(inc_src, filename: "/tmp/crshader_spec/shared_common.crshader", write_disk: false)
+    inc_outputs.size.should eq(1)
+    inc_outputs[0][0].should eq("/tmp/crshader_spec/shared_common.gdshaderinc")
+    inc_outputs[0][1].should eq(CrShader::ShaderTarget::GDShaderInc)
+    inc_outputs[0][2].should_not contain("shader_type")
+    inc_outputs[0][2].should contain("vec2 scale_uv(vec2 uv)")
+
+    comp_src = <<-CR
+      emit_target "copy.glsl", target: :glsl, godot_compute_header: true
+
+      shader :compute do
+        local_size x: 8, y: 8, z: 1
+        image2d :dst_img, format: :rgba16f, set: 0, binding: 0, writeonly: true
+      end
+
+      def main : Void
+        imageStore(dst_img, ivec2(gl_GlobalInvocationID.xy), vec4(1.0))
+      end
+    CR
+
+    comp_outputs = compiler.compile_emit_targets(comp_src, filename: "/tmp/crshader_spec/outline_copy.crshader", write_disk: false)
+    comp_outputs.size.should eq(1)
+    comp_outputs[0][0].should eq("/tmp/crshader_spec/copy.glsl")
+    comp_outputs[0][1].should eq(CrShader::ShaderTarget::GLSL)
+    comp_outputs[0][2].starts_with?("#[compute]\n#version 450").should be_true
+  end
 end
