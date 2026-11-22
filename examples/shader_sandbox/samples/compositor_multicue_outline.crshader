@@ -1,0 +1,71 @@
+# =============================================================================
+# Multi-Cue Compositor Outline (Reverse-Z Depth + Forward+ Normals + Boil)
+# =============================================================================
+# Production-ready Godot 4.8 CompositorEffect outline pass powered by `std/outline`.
+# Combines exact Reverse-Z view-space depth silhouettes, grazing-angle threshold
+# compensation, Forward+ normal_roughness crease detection, and optional 90s
+# Squigglevision hand-drawn boiling line wobble.
+
+require "std/outline"
+
+compositor_effect :post_opaque do
+  access :color, :depth, :normal_roughness, :scene_data
+
+  # Primary outline stroke color and opacity
+  property outline_color : Color = Color.hex("#120d26"), hint: :source_color
+  # Base stroke thickness in pixels
+  property outline_thickness : Float32 = 1.5, range: 0.5..6.0, step: 0.25
+  # Relative symmetric depth discontinuity threshold
+  property depth_threshold : Float32 = 0.08, range: 0.005..0.5, step: 0.005
+  # Normal crease angle discontinuity threshold
+  property normal_threshold : Float32 = 0.35, range: 0.05..1.5, step: 0.05
+  # Grazing angle compensation scale to prevent flat-floor false outlines
+  property grazing_scale : Float32 = 4.0, range: 0.0..12.0, step: 0.25
+  # Hand-drawn Squigglevision boiling wobble amplitude (0 = crisp geometric stroke)
+  property boil_amp : Float32 = 0.0, range: 0.0..1.0, step: 0.05
+  # Spatial frequency of the boiling contour wobble
+  property boil_freq : Float32 = 10.0, range: 1.0..30.0, step: 0.5
+
+  process_pixel do |coord, uv, color|
+    raw_d = texelFetch(depth_texture, coord, 0).r
+    # In Godot 4.8 Reverse-Z, sky/far clear depth is 0.0
+    if raw_d > 0.00001
+      boil = outline_boiling_scale(uv, TIME, boil_amp, boil_freq)
+      step_px = max(int(round(outline_thickness * boil)), 1)
+      max_c = size - ivec2(1, 1)
+
+      c_up = clamp(coord + ivec2(0, -step_px), ivec2(0, 0), max_c)
+      c_down = clamp(coord + ivec2(0, step_px), ivec2(0, 0), max_c)
+      c_left = clamp(coord + ivec2(-step_px, 0), ivec2(0, 0), max_c)
+      c_right = clamp(coord + ivec2(step_px, 0), ivec2(0, 0), max_c)
+
+      pixel_uv = vec2(1.0, 1.0) / vec2(float(size.x), float(size.y))
+      step_uv = pixel_uv * float(step_px)
+
+      view_pos = reconstruct_view_pos(uv, raw_d, INV_PROJECTION_MATRIX)
+      d_center = -view_pos.z
+      d_up = linear_depth_reverse_z(uv + vec2(0.0, -step_uv.y), texelFetch(depth_texture, c_up, 0).r, INV_PROJECTION_MATRIX)
+      d_down = linear_depth_reverse_z(uv + vec2(0.0, step_uv.y), texelFetch(depth_texture, c_down, 0).r, INV_PROJECTION_MATRIX)
+      d_left = linear_depth_reverse_z(uv + vec2(-step_uv.x, 0.0), texelFetch(depth_texture, c_left, 0).r, INV_PROJECTION_MATRIX)
+      d_right = linear_depth_reverse_z(uv + vec2(step_uv.x, 0.0), texelFetch(depth_texture, c_right, 0).r, INV_PROJECTION_MATRIX)
+
+      n_center = unpack_view_normal(texelFetch(normal_roughness_texture, coord, 0).xyz)
+      n_up = unpack_view_normal(texelFetch(normal_roughness_texture, c_up, 0).xyz)
+      n_down = unpack_view_normal(texelFetch(normal_roughness_texture, c_down, 0).xyz)
+      n_left = unpack_view_normal(texelFetch(normal_roughness_texture, c_left, 0).xyz)
+      n_right = unpack_view_normal(texelFetch(normal_roughness_texture, c_right, 0).xyz)
+
+      view_dir = normalize(-view_pos)
+      adapt_depth_thresh = grazing_depth_threshold(depth_threshold, n_center, view_dir, grazing_scale)
+
+      depth_edge = symmetric_depth_edge(d_center, d_up, d_down, d_left, d_right)
+      crease_edge = normal_crease_edge(n_center, n_up, n_down, n_left, n_right)
+
+      is_edge = (depth_edge > adapt_depth_thresh) || (crease_edge > normal_threshold)
+      if is_edge
+        blended = mix(color.rgb, outline_color.rgb, outline_color.a)
+        color = vec4(blended, color.a)
+      end
+    end
+  end
+end

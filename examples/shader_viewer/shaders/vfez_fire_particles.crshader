@@ -16,9 +16,9 @@ uniform flame_mid_color : Color = Color.new(0.95, 0.35, 0.05, 1.0), hint: :sourc
 uniform smoke_end_color : Color = Color.new(0.15, 0.15, 0.15, 0.0), hint: :source_color
 
 def start
-  # Random initial velocity spread based on particle SEED
-  rand_x = (sin(float(INDEX) * 12.9898 + SEED) - 0.5) * spread_factor
-  rand_z = (cos(float(INDEX) * 78.233 + SEED) - 0.5) * spread_factor
+  # Random initial velocity spread based on particle RANDOM_SEED
+  rand_x = (sin(float(INDEX) * 12.9898 + float(RANDOM_SEED)) - 0.5) * spread_factor
+  rand_z = (cos(float(INDEX) * 78.233 + float(RANDOM_SEED)) - 0.5) * spread_factor
   rand_speed = initial_speed * (0.8 + 0.4 * fract(sin(float(INDEX)) * 43758.5453))
 
   VELOCITY = vec3(rand_x, rand_speed, rand_z)

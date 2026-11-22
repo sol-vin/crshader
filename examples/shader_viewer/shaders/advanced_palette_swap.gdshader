@@ -15,17 +15,6 @@ uniform float input_red : hint_range(0.0, 2.0, 0.01) = 1.0;
 uniform float input_green : hint_range(0.0, 2.0, 0.01) = 1.0;
 uniform float input_blue : hint_range(0.0, 2.0, 0.01) = 1.0;
 
-float redmean_dist(vec3 c1, vec3 c2) {
-	float rbar = (0.5 * (c1.r + c2.r));
-	float dr = (c1.r - c2.r);
-	float dg = (c1.g - c2.g);
-	float db = (c1.b - c2.b);
-	float weight_r = (2.0 + rbar);
-	float weight_g = 4.0;
-	float weight_b = (3.0 - rbar);
-	return sqrt(((((weight_r * dr) * dr) + ((weight_g * dg) * dg)) + ((weight_b * db) * db)));
-}
-
 float luminance(vec3 c) {
 	return (((0.2126 * c.r) + (0.7152 * c.g)) + (0.0722 * c.b));
 }
@@ -83,6 +72,17 @@ float bayer4(int x, int y) {
 	}
 }
 
+float redmean_dist(vec3 c1, vec3 c2) {
+	float rbar = (0.5 * (c1.r + c2.r));
+	float dr = (c1.r - c2.r);
+	float dg = (c1.g - c2.g);
+	float db = (c1.b - c2.b);
+	float weight_r = (2.0 + rbar);
+	float weight_g = 4.0;
+	float weight_b = (3.0 - rbar);
+	return sqrt(((((weight_r * dr) * dr) + ((weight_g * dg) * dg)) + ((weight_b * db) * db)));
+}
+
 float color_dist(vec3 c1, vec3 c2, int mode) {
 	float l1;
 	float l2;
@@ -106,7 +106,7 @@ float color_dist(vec3 c1, vec3 c2, int mode) {
 }
 
 void fragment() {
-	float raw_color = texture(TEXTURE, UV);
+	vec4 raw_color = texture(TEXTURE, UV);
 	vec3 adj = (raw_color.rgb * vec3(input_red, input_green, input_blue));
 	adj = (((adj - vec3(0.5, 0.5, 0.5)) * input_contrast) + vec3(0.5, 0.5, 0.5));
 	float lum = luminance(adj);

@@ -1,5 +1,6 @@
 require "lapis"
 require "../../../src/crshader/compiler"
+require "../../../src/crshader/compositor/compositor_effect_base"
 require "../../../src/crshader/editor/variable_array_control"
 require "../../../src/crshader/editor/dynamic_uniform_inspector"
 require "../../../src/crshader/editor/procedural_textures"
@@ -45,6 +46,7 @@ node CrShaderSandboxApp < Control do
   @world_env : Godot::WorldEnvironment? = nil
 
   @active_material : Godot::ShaderMaterial? = nil
+  @active_compositor_effect : CrShader::CRShaderCompositorEffect? = nil
   @current_mode : SandboxMode = SandboxMode::Spatial
   @left_pane : Godot::Control? = nil
   @dir_light : Godot::DirectionalLight3D? = nil
@@ -60,6 +62,8 @@ node CrShaderSandboxApp < Control do
 
   # Live Coding & Debounced Compilation
   @auto_compile : Bool = true
+  @release_strip : Bool = false
+  @active_features = Hash(String, CrShader::FeatureValue).new
   @dirty : Bool = false
   @debounce_time : Float64 = 0.35_f64
   @last_error_line : Int32 = 0
@@ -188,23 +192,28 @@ node CrShaderSandboxApp < Control do
 
     keywords = [
       "shader", "shader_type", "render_mode", "setup_gdshader",
-      "uniform", "instance_uniform", "global_uniform", "varying", "const",
+      "uniform", "property", "sampler", "instance_uniform", "global_uniform", "varying", "const",
+      "feature", "when_feature", "unless_feature", "shader_trait", "use_trait", "gradient", "curve", "inspect",
       "buffer", "push_constant", "shared", "image2d", "local_size", "require",
       "group", "subgroup", "field",
       "def", "end", "class", "struct", "module", "if", "else", "elsif", "unless",
       "while", "until", "for", "in", "case", "when", "return", "break", "next",
-      "true", "false", "nil"
+      "true", "false", "nil",
     ]
     keywords.each { |kw| highlighter.call("add_keyword_color", kw, kw_color) }
 
-    stages = ["vertex", "fragment", "light", "start", "process", "sky", "fog", "main"]
+    stages = [
+      "vertex", "fragment", "light", "start", "process", "sky", "fog", "main",
+      "sprite_effect", "screen_effect", "ui_effect", "surface_material",
+      "compositor_effect", "process_pixel", "on_vertex", "on_fragment", "on_light", "on_pixel",
+    ]
     stages.each { |st| highlighter.call("add_keyword_color", st, Color.new(1.0_f32, 0.4_f32, 0.6_f32, 1.0_f32)) }
 
     types = [
       "Float32", "Float64", "Float", "Int32", "UInt32", "Int", "UInt", "Bool", "Void",
       "Vec2", "Vec3", "Vec4", "IVec2", "IVec3", "IVec4", "UVec2", "UVec3", "UVec4",
       "BVec2", "BVec3", "BVec4", "Mat2", "Mat3", "Mat4", "Color",
-      "Sampler2D", "SamplerCube", "Sampler2DArray", "Sampler3D"
+      "Sampler2D", "SamplerCube", "Sampler2DArray", "Sampler3D",
     ]
     types.each { |t| highlighter.call("add_keyword_color", t, type_color) }
 
@@ -212,7 +221,7 @@ node CrShaderSandboxApp < Control do
       "VERTEX", "NORMAL", "TANGENT", "BINORMAL", "COLOR", "UV", "UV2",
       "ROUGHNESS", "METALLIC", "SPECULAR", "ALBEDO", "ALPHA", "EMISSION",
       "TIME", "FRAGCOORD", "FRONT_FACING", "MODEL_MATRIX", "VIEW_MATRIX",
-      "PROJECTION_MATRIX", "SCREEN_UV", "SCREEN_PIXEL_SIZE", "gl_GlobalInvocationID"
+      "PROJECTION_MATRIX", "SCREEN_UV", "SCREEN_PIXEL_SIZE", "gl_GlobalInvocationID",
     ]
     builtins.each { |b| highlighter.call("add_member_keyword_color", b, builtin_color) }
 
@@ -263,11 +272,49 @@ node CrShaderSandboxApp < Control do
         toolbar2.call("add_child", auto_check)
       end
 
+      # Release Strip CheckBox
+      rel_check = Godot.create(Godot::CheckBox)
+      if rel_check
+        rel_check.call("set_text", "--release")
+        rel_check.call("set_tooltip_text", "Strip `inspect` probes and `debug_view` uniform for zero-cost release")
+        rel_check.call("set_pressed", false)
+        rel_check.connect("toggled") do |args|
+          @release_strip = args.first?.try(&.as_bool) || false
+          compile_code
+        end
+        toolbar2.call("add_child", rel_check)
+      end
+
+      # Add Trait Dropdown
+      trait_opt = Godot.create(Godot::OptionButton)
+      if trait_opt
+        trait_opt.call("add_item", "🧩 Add Trait...", 0)
+        trait_list = CrShader::Std.trait_names
+        trait_list.each_with_index do |tname, idx|
+          trait_opt.call("add_item", tname, idx + 1)
+        end
+        trait_opt.connect("item_selected") do |args|
+          idx = args.first?.try(&.as_i) || 0
+          if idx > 0 && idx <= trait_list.size
+            insert_trait_line(trait_list[idx - 1])
+            trait_opt.call("select", 0)
+          end
+        end
+        toolbar2.call("add_child", trait_opt)
+      end
+
       # Snippets Dropdown
       snippet_opt = Godot.create(Godot::OptionButton)
       if snippet_opt
         snippet_opt.call("add_item", "⚡ Insert Snippet...", 0)
         snippets = [
+          "Archetype (Surface Material)",
+          "Archetype (Sprite Effect)",
+          "Archetype (Screen Effect)",
+          "Archetype (UI Effect)",
+          "Feature Specialization",
+          "Inline Gradient (Oklab)",
+          "Visual Inspect Probe",
           "Uniform (Float Range)",
           "Uniform (Color)",
           "Uniform (Texture)",
@@ -277,12 +324,15 @@ node CrShaderSandboxApp < Control do
           "Compositor Effect",
           "Compute Kernel",
           "Stylized Toon PBR",
+          "Require (std/sdf2d)",
+          "Require (std/blend)",
+          "Require (std/easing)",
           "Require (std/dither)",
           "Require (std/curl_noise)",
           "Require (std/color_spaces)",
           "Require (std/atmosphere)",
           "Require (std/glitch)",
-          "Generate Node"
+          "Generate Node",
         ]
         snippets.each_with_index do |sn, idx|
           snippet_opt.call("add_item", sn, idx + 1)
@@ -411,8 +461,37 @@ node CrShaderSandboxApp < Control do
     end
   end
 
+  def insert_trait_line(trait_name : String) : Void
+    if edit = @source_edit
+      curr_line = edit.call_i64("get_caret_line").to_i32
+      edit.call("insert_line_at", curr_line, "use_trait \"std/traits/#{trait_name}\"\n")
+      @dirty = true
+      @debounce_time = 0.15_f64
+    end
+  end
+
   def insert_snippet(name : String) : Void
     code_to_insert = case name
+                     when "Archetype (Surface Material)"
+                       "surface_material :toon do\n  property tint : Color = Color.hex(\"#38bdf8\"), hint: :source_color\n  use_trait \"std/traits/rim_fresnel\"\n  ALBEDO = tint.rgb\nend\n"
+                     when "Archetype (Sprite Effect)"
+                       "sprite_effect do |uv, color|\n  warped = uv.wave(12.0, 0.015)\n  texture(TEXTURE, warped) * color\nend\n"
+                     when "Archetype (Screen Effect)"
+                       "screen_effect do |uv, color|\n  use_trait \"std/traits/vignette\"\n  color\nend\n"
+                     when "Archetype (UI Effect)"
+                       "ui_effect do |uv, centered_uv, color|\n  require \"std/sdf2d\"\n  d = sdf2d_rounded_box(centered_uv, vec2(0.38, 0.28), 0.08)\n  vec4(vec3(0.15, 0.55, 0.95), sdf_fill(d))\nend\n"
+                     when "Feature Specialization"
+                       "feature :rim_glow, default: true\nwhen_feature :rim_glow do\n  use_trait \"std/traits/rim_fresnel\"\nend\n"
+                     when "Inline Gradient (Oklab)"
+                       "gradient :heat_ramp, {0.0 => \"#0f172a\", 0.5 => \"#f97316\", 1.0 => \"#fef08a\"}, space: :oklab\n"
+                     when "Visual Inspect Probe"
+                       "inspect :uv_check, UV\n"
+                     when "Require (std/sdf2d)"
+                       "require \"std/sdf2d\"\n"
+                     when "Require (std/blend)"
+                       "require \"std/blend\"\n"
+                     when "Require (std/easing)"
+                       "require \"std/easing\"\n"
                      when "Uniform (Float Range)"
                        "property speed : Float32 = 1.0, range: 0.0..5.0, step: 0.1\n"
                      when "Uniform (Color)"
@@ -448,7 +527,7 @@ node CrShaderSandboxApp < Control do
                      end
 
     if edit = @source_edit
-      curr_line = edit.call("get_caret_line").as_i
+      curr_line = edit.call_i64("get_caret_line").to_i32
       edit.call("insert_line_at", curr_line, code_to_insert)
       @dirty = true
       @debounce_time = 0.2_f64
@@ -465,7 +544,7 @@ node CrShaderSandboxApp < Control do
     sample_paths = [
       "examples/shader_sandbox/samples/*.crshader",
       "samples/*.crshader",
-      "examples/*.crshader"
+      "examples/*.crshader",
     ]
 
     all_files = Set(String).new
@@ -493,13 +572,14 @@ node CrShaderSandboxApp < Control do
     return unless File.exists?(path)
     content = File.read(path)
     @current_sample_pristine = content
+    @active_features.clear
 
     # Auto detect mode from shader content
     if content.includes?("shader_type :compute")
       set_sandbox_mode(SandboxMode::Compute)
-    elsif content.includes?("SCREEN_UV") || content.includes?("hint_screen_texture")
+    elsif content.includes?("screen_effect") || content.includes?("SCREEN_UV") || content.includes?("hint_screen_texture")
       set_sandbox_mode(SandboxMode::ScreenSpace)
-    elsif content.includes?("shader_type :canvas_item")
+    elsif content.includes?("shader_type :canvas_item") || content.includes?("sprite_effect") || content.includes?("ui_effect")
       set_sandbox_mode(SandboxMode::CanvasItem)
     else
       set_sandbox_mode(SandboxMode::Spatial)
@@ -537,7 +617,6 @@ node CrShaderSandboxApp < Control do
                  METALLIC = metallic
                end
              CR
-
            when "New 2D CanvasItem"
              set_sandbox_mode(SandboxMode::CanvasItem)
              <<-CR
@@ -554,7 +633,6 @@ node CrShaderSandboxApp < Control do
                  COLOR = tex * tint * pulse
                end
              CR
-
            when "New Screen Space"
              set_sandbox_mode(SandboxMode::ScreenSpace)
              <<-CR
@@ -574,7 +652,6 @@ node CrShaderSandboxApp < Control do
                  COLOR = vec4(col.rgb * vig, 1.0)
                end
              CR
-
            when "New Compute"
              set_sandbox_mode(SandboxMode::Compute)
              <<-CR
@@ -590,7 +667,6 @@ node CrShaderSandboxApp < Control do
                  imageStore(output_image, pos, color)
                end
              CR
-
            else
              return
            end
@@ -611,17 +687,14 @@ node CrShaderSandboxApp < Control do
       @screen_quad.try &.call("set_visible", false)
       @sprite_2d.try &.call("set_visible", false)
       select_shape(@current_shape)
-
     when SandboxMode::ScreenSpace
       @pivot.try &.call("set_visible", true)
       @screen_quad.try &.call("set_visible", true)
       @sprite_2d.try &.call("set_visible", false)
-
     when SandboxMode::CanvasItem
       @pivot.try &.call("set_visible", false)
       @screen_quad.try &.call("set_visible", false)
       @sprite_2d.try &.call("set_visible", true)
-
     when SandboxMode::Compute
       @pivot.try &.call("set_visible", false)
       @screen_quad.try &.call("set_visible", true)
@@ -656,11 +729,14 @@ node CrShaderSandboxApp < Control do
     edit = @source_edit
     return unless edit
 
-    source = edit.call("get_text").to_s
+    source = edit.call_str("get_text")
     return if source.strip.empty?
 
     start_time = Time.instant
-    compiler = CrShader::Compiler.new
+    compiler = CrShader::Compiler.new(
+      feature_overrides: @active_features,
+      strip_debug_inspects: @release_strip
+    )
 
     begin
       target_code = compiler.compile_source(source)
@@ -674,11 +750,12 @@ node CrShaderSandboxApp < Control do
       end
 
       @target_edit.try &.call("set_text", target_code)
-      set_status("✔ Compiled successfully in #{elapsed_ms}ms (#{target_code.lines.size} lines)", is_error: false)
+      rel_badge = @release_strip ? " [RELEASE]" : ""
+      set_status("✔ Compiled#{rel_badge} in #{elapsed_ms}ms (#{target_code.lines.size} lines)", is_error: false)
 
-      apply_compiled_shader(target_code)
+      apply_compiled_shader(target_code, compiler.last_program, source)
 
-      # Dynamically synthesize parameter controls for all uniforms
+      # Dynamically synthesize specialization feature toggles & parameter controls
       if program = compiler.last_program
         if container = @inspector_vbox
           inspector = @dynamic_inspector
@@ -687,7 +764,17 @@ node CrShaderSandboxApp < Control do
             container.call("add_child", inspector)
             @dynamic_inspector = inspector
           end
-          inspector.configure(program, @active_material)
+          inspector.configure(
+            program,
+            @active_material,
+            @active_compositor_effect,
+            active_features: @active_features,
+            on_features_changed: ->(updated : Hash(String, CrShader::FeatureValue)) do
+              @active_features = updated.dup
+              compile_code
+              nil
+            end
+          )
         end
       end
     rescue ex : CrShader::ShaderError
@@ -712,10 +799,43 @@ node CrShaderSandboxApp < Control do
     end
   end
 
-  def apply_compiled_shader(gdshader_code : String) : Void
+  def apply_compiled_shader(
+    compiled_code : String,
+    program : CrShader::ShaderProgram? = nil,
+    raw_source : String = "",
+  ) : Void
+    if program && program.target == CrShader::ShaderTarget::GLSL
+      @active_material = nil
+      @screen_quad.try &.call("set_visible", false)
+      @pivot.try &.call("set_visible", true)
+
+      eff = @active_compositor_effect
+      if eff.nil? || eff.pointer.null?
+        eff = Godot.create(CrShader::CRShaderCompositorEffect)
+        @active_compositor_effect = eff
+      end
+      if eff && !eff.pointer.null?
+        eff.active_features = @active_features.dup
+        eff.strip_debug_inspects = @release_strip
+        eff.set_shader_code(raw_source.empty? ? compiled_code : raw_source, is_glsl: raw_source.empty?)
+        if env = @world_env
+          CrShader::CRShaderCompositorEffect.mount_to_world_environment(env, eff)
+        end
+      end
+      return
+    end
+
+    # Clear any active compositor effect when switching back to GDShader material modes
+    if @active_compositor_effect
+      @active_compositor_effect = nil
+      if env = @world_env
+        CrShader::CRShaderCompositorEffect.clear_world_environment(env)
+      end
+    end
+
     shader = Godot.create(Godot::Shader)
     return unless shader
-    shader.call("set_code", gdshader_code)
+    shader.call("set_code", compiled_code)
 
     mat = Godot.create(Godot::ShaderMaterial)
     return unless mat
@@ -762,7 +882,7 @@ node CrShaderSandboxApp < Control do
 
   def toggle_fullscreen_viewport : Void
     if lp = @left_pane
-      is_vis = lp.call("is_visible").as_bool
+      is_vis = lp.call_bool("is_visible")
       lp.call("set_visible", !is_vis)
       set_status(is_vis ? "Preview Mode (F11 to restore editor)" : "Editor restored", is_error: false)
     end
@@ -797,7 +917,7 @@ node CrShaderSandboxApp < Control do
   end
 
   def copy_target_code : Void
-    code = @target_edit.try(&.call("get_text").to_s) || ""
+    code = @target_edit.try(&.call_str("get_text")) || ""
     if !code.empty?
       ds = Godot::DisplayServer.new(Godot::DisplayServer.singleton_ptr)
       if ds && !ds.pointer.null?
@@ -808,7 +928,7 @@ node CrShaderSandboxApp < Control do
   end
 
   def copy_source_code : Void
-    code = @source_edit.try(&.call("get_text").to_s) || ""
+    code = @source_edit.try(&.call_str("get_text")) || ""
     if !code.empty?
       ds = Godot::DisplayServer.new(Godot::DisplayServer.singleton_ptr)
       if ds && !ds.pointer.null?
@@ -822,29 +942,29 @@ node CrShaderSandboxApp < Control do
     viewer_paths = [
       "res://../shader_viewer/scenes/viewer.tscn",
       "res://scenes/viewer.tscn",
-      "examples/shader_viewer/scenes/viewer.tscn"
+      "examples/shader_viewer/scenes/viewer.tscn",
     ]
     viewer_paths.each do |vp|
       begin
-        return if get_tree.call("change_scene_to_file", vp).to_i == 0
+        return if get_tree.call_i64("change_scene_to_file", vp).to_i32 == 0
       rescue
       end
     end
   end
 
   def _unhandled_input(event : Godot::InputEvent) : Void
-    if event.is_a?(Godot::InputEventKey) && event.call("is_pressed").as_bool
-      key = event.call("get_keycode").to_i
+    if event.is_a?(Godot::InputEventKey) && event.call_bool("is_pressed")
+      key = event.call_i64("get_keycode").to_i32
       ctrl = begin
-               event.call("is_ctrl_pressed").as_bool
-             rescue
-               false
-             end
+        event.call_bool("is_ctrl_pressed")
+      rescue
+        false
+      end
       shift = begin
-                event.call("is_shift_pressed").as_bool
-              rescue
-                false
-              end
+        event.call_bool("is_shift_pressed")
+      rescue
+        false
+      end
 
       if key == 4194342 # KEY_F11
         toggle_fullscreen_viewport

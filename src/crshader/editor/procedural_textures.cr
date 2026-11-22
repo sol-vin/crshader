@@ -17,7 +17,7 @@ module CrShader
       "UV Gradient",
       "Flat Normal (0,0,1)",
       "Color Bars",
-      "Concentric Target"
+      "Concentric Target",
     ]
 
     def self.presets : Array(String)

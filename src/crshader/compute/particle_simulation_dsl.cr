@@ -64,7 +64,7 @@ module CrShader
         mode : BoundaryMode = BoundaryMode::Bounce,
         min_x : Float32 = -10.0_f32, min_y : Float32 = 0.0_f32, min_z : Float32 = -10.0_f32,
         max_x : Float32 = 10.0_f32, max_y : Float32 = 20.0_f32, max_z : Float32 = 10.0_f32,
-        restitution : Float32 = 0.7_f32
+        restitution : Float32 = 0.7_f32,
       ) : self
         @bounds = DomainBounds.new(mode, min_x, min_y, min_z, max_x, max_y, max_z, restitution)
         self
@@ -73,7 +73,7 @@ module CrShader
       def add_attractor(
         type : AttractorType = AttractorType::Point,
         x : Float32 = 0.0_f32, y : Float32 = 5.0_f32, z : Float32 = 0.0_f32,
-        strength : Float32 = 15.0_f32, radius : Float32 = 20.0_f32, falloff : Float32 = 2.0_f32
+        strength : Float32 = 15.0_f32, radius : Float32 = 20.0_f32, falloff : Float32 = 2.0_f32,
       ) : self
         @attractors << ForceAttractor.new(type, x, y, z, strength, radius, falloff)
         self

@@ -3,6 +3,7 @@ require "./crshader/compiler"
 require "./crshader_resource"
 require "./resource_format"
 require "./highlighter"
+require "./crshader/compositor/compositor_effect_base"
 require "./crshader/editor/shader_studio"
 require "./crshader/editor/variable_array_control"
 
@@ -47,7 +48,6 @@ node CrShaderPlugin < EditorPlugin do
       @studio_panel = panel
     end
   end
-
 
   def _exit_tree : Void
     CrShader::ResourceFormatLoaderCRShader.unregister
@@ -112,4 +112,3 @@ node CrShaderPlugin < EditorPlugin do
 end
 
 CRShaderPlugin = CrShaderPlugin
-

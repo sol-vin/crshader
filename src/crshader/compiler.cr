@@ -5,11 +5,16 @@ require "./parser/dsl_parser"
 require "./parser/error_formatter"
 require "./validator/semantic_validator"
 require "./extensions/registry"
+require "./extensions/visual_inspector_extension"
 require "./std/registry"
 require "./optimizer/tree_shaker"
 require "./optimizer/name_optimizer"
 require "./transpiler/gdshader/emitter"
+require "./transpiler/gdshader/gdshaderinc_emitter"
 require "./transpiler/glsl/emitter"
+require "./runtime/variant_cache"
+require "./composer/shader_composer"
+require "./builder/shader_builder"
 
 module CrShader
   class Compiler
@@ -17,13 +22,19 @@ module CrShader
     property verbose : Bool = false
     property optimize_names : Bool = false
     property skip_validation : Bool = false
+    property feature_overrides : Hash(String, FeatureValue)
+    property strip_debug_inspects : Bool = false
+    property godot_compute_header : Bool = false
     getter last_program : ShaderProgram? = nil
 
     def initialize(
       @target_override : ShaderTarget? = nil,
       @verbose : Bool = false,
       @optimize_names : Bool = false,
-      @skip_validation : Bool = false
+      @skip_validation : Bool = false,
+      @feature_overrides : Hash(String, FeatureValue) = {} of String => FeatureValue,
+      @strip_debug_inspects : Bool = false,
+      @godot_compute_header : Bool = false,
     )
     end
 
@@ -32,17 +43,31 @@ module CrShader
         raise ShaderError.new("Input file not found: #{input_path}")
       end
 
-      source = File.read(input_path)
-      compiled = compile_source(source, filename: input_path)
-
-      if output_path
-        # Ensure parent directory exists
-        parent_dir = File.dirname(output_path)
-        Dir.mkdir_p(parent_dir) unless Dir.exists?(parent_dir)
-        File.write(output_path, compiled)
+      inferred_target = @target_override
+      if inferred_target.nil? && output_path
+        if output_path.downcase.ends_with?(".gdshaderinc")
+          inferred_target = ShaderTarget::GDShaderInc
+        elsif output_path.downcase.ends_with?(".glsl")
+          inferred_target = ShaderTarget::GLSL
+        end
       end
 
-      compiled
+      old_override = @target_override
+      @target_override = inferred_target if inferred_target
+      begin
+        source = File.read(input_path)
+        compiled = compile_source(source, filename: input_path)
+
+        if output_path
+          parent_dir = File.dirname(output_path)
+          Dir.mkdir_p(parent_dir) unless Dir.exists?(parent_dir)
+          File.write(output_path, compiled)
+        end
+
+        compiled
+      ensure
+        @target_override = old_override
+      end
     end
 
     def compile(source : String, target : ShaderTarget? = nil) : String
@@ -56,54 +81,75 @@ module CrShader
     end
 
     def compile_source(source : String, filename : String? = nil) : String
-      parser = DslParser.new(filename: filename)
+      parser = DslParser.new(
+        filename: filename,
+        default_target: @target_override || ShaderTarget::GDShader,
+        force_target: !@target_override.nil?,
+        feature_overrides: @feature_overrides
+      )
       program = parser.parse(source)
       @last_program = program
 
-      # Extension AST transformations
+      # Determine target early so validation & extensions see final target
+      target = @target_override || program.target
+      program.target = target
+
+      # Extension AST transformations + Visual Inspector probes
       Extensions.transform_program(program)
+      VisualInspectorExtension.new(strip_debug_inspects: @strip_debug_inspects).transform_program(program)
 
       # Semantic validation pass (early error detection)
       unless @skip_validation
         validator = Validator::SemanticValidator.new(program, filename: filename, source_lines: parser.source_lines)
         Extensions.validate(program, validator.context)
-        validator.validate!
+        if target == ShaderTarget::GDShaderInc
+          validator.validate_uniforms
+          validator.context.check!
+        else
+          validator.validate!
+        end
       end
-
-      # Determine target
-      target = @target_override || program.target
-      program.target = target
 
       # Handle setup_gdshader helper defaults
       if program.setup_gdshader && target == ShaderTarget::GDShader
         apply_setup_gdshader_defaults(program)
       end
 
-      # Set up tree shaker for stdlib and helper functions
+      # Set up tree shaker for stdlib, imported modules, and helper functions
       tree_shaker = TreeShaker.new
 
-      # Load standard libraries if required
-      program.requires.each do |req_name|
-        defs = Std.load_module(req_name)
-        defs.each do |d|
+      # Always include core math, color, blend, and uv helpers in pool for fluent method chains
+      ["math", "color", "blend", "uv"].each do |core_mod|
+        Std.load_module(core_mod).each do |d|
           tree_shaker.add_library_def(d)
         end
       end
 
-      # Always include basic math helpers like rand() in pool
-      Std.load_module("math").each do |d|
-        tree_shaker.add_library_def(d)
+      # Include any required standard libraries in pool
+      program.requires.each do |req_name|
+        Std.load_module(req_name).each do |d|
+          tree_shaker.add_library_def(d)
+        end
       end
 
-      # Also add any non-stage user functions to pool
+      # Add all non-stage functions (including imported module functions) to pool
       program.functions.each do |name, d|
         unless TreeShaker::STAGES.includes?(name)
           tree_shaker.add_library_def(d)
         end
       end
 
-      # Get only alive helper functions
+      # Get only alive helper functions in post-order dependency sequence
       alive_helpers = tree_shaker.process(program)
+      reachable_ids = tree_shaker.reachable_identifiers
+
+      # When specialization features exist, prune unused uniforms & samplers automatically
+      if !program.features.empty? && target != ShaderTarget::GDShaderInc && TreeShaker::STAGES.any? { |s| program.functions.has_key?(s) }
+        program.uniforms.select! do |u|
+          reachable_ids.includes?(u.name) ||
+            (program.is_compositor && u.set == 0 && (u.binding == 1 || u.binding == 2))
+        end
+      end
 
       # Optimize local variable names if requested
       if @optimize_names
@@ -116,18 +162,19 @@ module CrShader
       case target
       when ShaderTarget::GDShader
         emitter = GDShaderEmitter.new(io, program)
-        emitter.emit(alive_helpers)
+        emitter.emit(alive_helpers, reachable_ids)
+      when ShaderTarget::GDShaderInc
+        emitter = GDShaderIncEmitter.new(io, program, filename: filename)
+        emitter.emit(alive_helpers, reachable_ids)
       when ShaderTarget::GLSL
-        emitter = GLSLEmitter.new(io, program)
-        emitter.emit(alive_helpers)
+        emitter = GLSLEmitter.new(io, program, godot_compute_header: @godot_compute_header)
+        emitter.emit(alive_helpers, reachable_ids)
       end
 
       io.to_s
     end
 
     private def apply_setup_gdshader_defaults(program : ShaderProgram)
-      # If no shader_type set, default to spatial
-      # setup_gdshader ensures common standard uniforms exist if not declared
       has_albedo = program.uniforms.any? { |u| u.name == "albedo" || u.name == "color" }
       unless has_albedo
         program.uniforms << UniformDecl.new(
@@ -138,5 +185,20 @@ module CrShader
         )
       end
     end
+  end
+
+  def self.compile_variant(
+    source : String,
+    target : ShaderTarget? = nil,
+    features : Hash(String, FeatureValue)? = nil,
+    strip_debug_inspects : Bool = false,
+    cache : VariantCache = VariantCache.global,
+  ) : String
+    cache.get_or_compile(
+      source: source,
+      target: target,
+      features: features,
+      strip_debug_inspects: strip_debug_inspects
+    ).code
   end
 end

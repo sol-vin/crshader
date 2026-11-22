@@ -145,12 +145,17 @@ module CrShader
     end
 
     def visit(node : Crystal::TypeDeclaration)
-      # e.g. pos : Vec3 = Vec3.new(...)
+      # e.g. pos : Vec3 = Vec3.new(...) or neighbors : Array(PixelInfo, DIRECTIONS_NUM)
       var_name = node.var.to_s
       resolved_type = TypeInfo.resolve(node.declared_type.to_s, @target)
       @symbol_table.mark_variable_declared(var_name, resolved_type)
 
-      @io << "#{resolved_type} #{var_name}"
+      if m = resolved_type.match(/^(.+?)(\[.+\])$/)
+        @io << "#{m[1]} #{var_name}#{m[2]}"
+      else
+        @io << "#{resolved_type} #{var_name}"
+      end
+
       if val = node.value
         @io << " = "
         old_expr = @in_expression
@@ -285,7 +290,6 @@ module CrShader
       false
     end
 
-
     def visit(node : Crystal::Unless)
       @io << "if (!("
       node.cond.accept(self)
@@ -408,11 +412,19 @@ module CrShader
 
     def visit(node : Crystal::NumberLiteral)
       val = node.value
-      if node.kind == :f32 || node.kind == :f64 || (val.includes?('.') && !val.ends_with?('.'))
+      case node.kind
+      when .f32?, .f64?
         @io << val
-        @io << ".0" unless val.includes?('.')
+        @io << ".0" unless val.includes?('.') || val.includes?('e') || val.includes?('E')
+      when .u8?, .u16?, .u32?, .u64?, .u128?
+        @io << val
+        @io << "u" unless val.ends_with?('u') || val.ends_with?('U')
       else
-        @io << val
+        if val.includes?('.') && !val.ends_with?('.')
+          @io << val
+        else
+          @io << val
+        end
       end
       false
     end
@@ -459,9 +471,10 @@ module CrShader
       if node.name == "each" && (obj = actual_obj).is_a?(Crystal::RangeLiteral) && (block = node.block)
         var_name = block.args.first?.try(&.name) || "i"
         cmp_op = obj.exclusive? ? "<" : "<="
+        iter_type = (@symbol_table.infer_type(obj.from) == "uint" || @symbol_table.infer_type(obj.to) == "uint") ? "uint" : "int"
         @symbol_table.enter_scope
-        @symbol_table.mark_variable_declared(var_name, "int")
-        @io << "for (int #{var_name} = "
+        @symbol_table.mark_variable_declared(var_name, iter_type)
+        @io << "for (#{iter_type} #{var_name} = "
         obj.from.accept(self)
         @io << "; #{var_name} #{cmp_op} "
         obj.to.accept(self)
@@ -478,9 +491,11 @@ module CrShader
       # 3. Check for count.times do |i|
       if node.name == "times" && (obj = node.obj) && (block = node.block)
         var_name = block.args.first?.try(&.name) || "i"
+        iter_type = @symbol_table.infer_type(obj) == "uint" ? "uint" : "int"
+        zero_lit = iter_type == "uint" ? "0u" : "0"
         @symbol_table.enter_scope
-        @symbol_table.mark_variable_declared(var_name, "int")
-        @io << "for (int #{var_name} = 0; #{var_name} < "
+        @symbol_table.mark_variable_declared(var_name, iter_type)
+        @io << "for (#{iter_type} #{var_name} = #{zero_lit}; #{var_name} < "
         obj.accept(self)
         @io << "; #{var_name}++) {\n"
         indent do
@@ -617,6 +632,28 @@ module CrShader
         return
       when "to_b", "to_bool"
         @io << "bool("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "to_bits_u32"
+        @io << "floatBitsToUint("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "to_bits_i32"
+        @io << "floatBitsToInt("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "from_bits_f32"
+        recv_t = @symbol_table.infer_type(obj)
+        fn = (recv_t == "uint" || recv_t.starts_with?("uvec")) ? "uintBitsToFloat" : "intBitsToFloat"
+        @io << "#{fn}("
+        obj.accept(self)
+        @io << ")"
+        return
+      when "round_even", "roundEven"
+        @io << "roundEven("
         obj.accept(self)
         @io << ")"
         return
@@ -759,6 +796,278 @@ module CrShader
         emit_args(node.args)
         @io << ")"
         return
+      when "tile"
+        @io << "fract(("
+        obj.accept(self)
+        @io << ") * "
+        if node.args.size >= 2
+          @io << "vec2("
+          node.args[0].accept(self)
+          @io << ", "
+          node.args[1].accept(self)
+          @io << ")"
+        elsif node.args.size == 1
+          @io << "("
+          node.args[0].accept(self)
+          @io << ")"
+        else
+          @io << "1.0"
+        end
+        @io << ")"
+        return
+      when "scroll"
+        @io << "(("
+        obj.accept(self)
+        @io << ") + "
+        if node.args.size >= 3
+          @io << "vec2("
+          node.args[0].accept(self)
+          @io << ", "
+          node.args[1].accept(self)
+          @io << ") * ("
+          node.args[2].accept(self)
+          @io << ")"
+        elsif node.args.size == 2
+          @io << "vec2("
+          node.args[0].accept(self)
+          @io << ", "
+          node.args[1].accept(self)
+          @io << ") * TIME"
+        elsif node.args.size == 1
+          @io << "("
+          node.args[0].accept(self)
+          @io << ") * TIME"
+        else
+          @io << "vec2(0.0, 0.0)"
+        end
+        @io << ")"
+        return
+      when "offset"
+        @io << "(("
+        obj.accept(self)
+        @io << ") + "
+        if node.args.size >= 2
+          @io << "vec2("
+          node.args[0].accept(self)
+          @io << ", "
+          node.args[1].accept(self)
+          @io << ")"
+        elsif node.args.size == 1
+          @io << "("
+          node.args[0].accept(self)
+          @io << ")"
+        else
+          @io << "vec2(0.0, 0.0)"
+        end
+        @io << ")"
+        return
+      when "rotate"
+        @symbol_table.referenced_functions.add("uv_rotate")
+        @io << "uv_rotate("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "0.0"
+        end
+        @io << ", "
+        if node.args.size >= 2
+          node.args[1].accept(self)
+        else
+          @io << "vec2(0.5, 0.5)"
+        end
+        @io << ")"
+        return
+      when "pixelate"
+        @symbol_table.referenced_functions.add("uv_pixelate")
+        @io << "uv_pixelate("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "64.0"
+        end
+        @io << ")"
+        return
+      when "polar"
+        @symbol_table.referenced_functions.add("uv_polar")
+        @io << "uv_polar("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "vec2(0.5, 0.5)"
+        end
+        @io << ")"
+        return
+      when "wave"
+        @symbol_table.referenced_functions.add("uv_wave")
+        @io << "uv_wave("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "8.0"
+        end
+        @io << ", "
+        if node.args.size >= 2
+          node.args[1].accept(self)
+        else
+          @io << "0.02"
+        end
+        @io << ", "
+        if node.args.size >= 3
+          node.args[2].accept(self)
+        else
+          @io << "TIME"
+        end
+        @io << ")"
+        return
+      when "luminance"
+        recv_t = @symbol_table.infer_type(obj)
+        @io << "dot(("
+        obj.accept(self)
+        @io << (recv_t == "vec4" ? ").rgb" : ")")
+        @io << ", vec3(0.2126, 0.7152, 0.0722))"
+        return
+      when "posterize"
+        @io << "(floor(("
+        obj.accept(self)
+        @io << ") * ("
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "8.0"
+        end
+        @io << ")) / max(("
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "8.0"
+        end
+        @io << "), 1.0))"
+        return
+      when "contrast"
+        recv_t = @symbol_table.infer_type(obj)
+        fn = recv_t == "vec4" ? "adjust_contrast_rgba" : "adjust_contrast"
+        @symbol_table.referenced_functions.add(fn)
+        @io << "#{fn}("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "1.0"
+        end
+        @io << ")"
+        return
+      when "saturate_color"
+        recv_t = @symbol_table.infer_type(obj)
+        fn = recv_t == "vec4" ? "saturate_rgba" : "adjust_saturation"
+        @symbol_table.referenced_functions.add(fn)
+        @io << "#{fn}("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "1.0"
+        end
+        @io << ")"
+        return
+      when "hue_shift"
+        recv_t = @symbol_table.infer_type(obj)
+        fn = recv_t == "vec4" ? "hue_shift_rgba" : "hue_shift_rgb"
+        @symbol_table.referenced_functions.add(fn)
+        @io << "#{fn}("
+        obj.accept(self)
+        @io << ", "
+        if node.args.size >= 1
+          node.args[0].accept(self)
+        else
+          @io << "0.0"
+        end
+        @io << ")"
+        return
+      when "blend"
+        mode_raw = if m_arg = node.args[0]?
+                     case m_arg
+                     when Crystal::SymbolLiteral, Crystal::StringLiteral then m_arg.value
+                     when Crystal::Var                                   then m_arg.name
+                     else                                                     "overlay"
+                     end
+                   else
+                     "overlay"
+                   end
+        mode = mode_raw.downcase
+        unless ["multiply", "screen", "overlay", "hard_light", "soft_light", "color_dodge", "color_burn", "difference", "exclusion", "add"].includes?(mode)
+          mode = "overlay"
+        end
+        recv_t = @symbol_table.infer_type(obj)
+        top_arg = node.args[1]?
+        top_t = top_arg ? @symbol_table.infer_type(top_arg) : recv_t
+        if recv_t == "vec4"
+          fn = "blend_#{mode}_rgba"
+          @symbol_table.referenced_functions.add(fn)
+          @io << "#{fn}("
+          obj.accept(self)
+          @io << ", "
+          if top_arg
+            if top_t == "vec3"
+              @io << "vec4("
+              top_arg.accept(self)
+              @io << ", 1.0)"
+            else
+              top_arg.accept(self)
+            end
+          else
+            @io << "vec4(1.0, 1.0, 1.0, 1.0)"
+          end
+        else
+          fn = "blend_#{mode}_opacity"
+          @symbol_table.referenced_functions.add(fn)
+          @io << "#{fn}("
+          obj.accept(self)
+          @io << ", "
+          if top_arg
+            if top_t == "vec4"
+              @io << "("
+              top_arg.accept(self)
+              @io << ").rgb"
+            else
+              top_arg.accept(self)
+            end
+          else
+            @io << "vec3(1.0, 1.0, 1.0)"
+          end
+        end
+        @io << ", "
+        if op_arg = node.args[2]?
+          op_arg.accept(self)
+        else
+          @io << "1.0"
+        end
+        @io << ")"
+        return
+      when "remap"
+        @symbol_table.referenced_functions.add("remap")
+        @io << "remap("
+        obj.accept(self)
+        if !node.args.empty?
+          @io << ", "
+          emit_args(node.args)
+        end
+        @io << ")"
+        return
+      when "one_minus"
+        @io << "(1.0 - ("
+        obj.accept(self)
+        @io << "))"
+        return
       when "discard"
         @io << "discard"
         return
@@ -779,7 +1088,7 @@ module CrShader
       clean_name = name.sub(/^builtin_/, "")
 
       # Check if this call is actually an identifier/variable reference without parens (e.g. gl_GlobalInvocationID, input_buffer)
-      if node.args.empty? && (@symbol_table.is_builtin?(name) || @symbol_table.global_symbols.has_key?(clean_name) || @symbol_table.declared_vars_in_scope.includes?(clean_name))
+      if node.args.empty? && (@symbol_table.is_builtin?(name) || @symbol_table.global_symbols.has_key?(clean_name) || @symbol_table.variable_declared?(clean_name))
         @io << @symbol_table.resolve_builtin_name(name)
         return
       end
@@ -806,11 +1115,11 @@ module CrShader
         return
       end
 
-      # Constructor helpers and HLSL / GLSL aliases
+      # Constructor helpers and HLSL / GLSL / Crystal snake_case aliases
       target_func = case name
                     when "color"
-                      @target == ShaderTarget::GDShader ? "vec4" : "vec4"
-                    when "vec2", "vec3", "vec4", "mat2", "mat3", "mat4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4"
+                      "vec4"
+                    when "vec2", "vec3", "vec4", "bvec2", "bvec3", "bvec4", "mat2", "mat3", "mat4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4"
                       name
                     when "float", "int", "uint", "bool"
                       name
@@ -824,6 +1133,28 @@ module CrShader
                       "inversesqrt"
                     when "fmod"
                       "mod"
+                    when "round_even"
+                      "roundEven"
+                    when "float_bits_to_uint"
+                      "floatBitsToUint"
+                    when "uint_bits_to_float"
+                      "uintBitsToFloat"
+                    when "float_bits_to_int"
+                      "floatBitsToInt"
+                    when "int_bits_to_float"
+                      "intBitsToFloat"
+                    when "texel_fetch"
+                      "texelFetch"
+                    when "texture_lod"
+                      "textureLod"
+                    when "texture_size"
+                      "textureSize"
+                    when "image_load"
+                      "imageLoad"
+                    when "image_store"
+                      "imageStore"
+                    when "image_size"
+                      "imageSize"
                     when "saturate"
                       @io << "clamp("
                       emit_args(node.args)
@@ -876,7 +1207,12 @@ module CrShader
 
     private def find_new_assigned_vars(node : Crystal::ASTNode) : Array(Tuple(String, String))
       results = [] of Tuple(String, String)
-      collect_new_assigned_vars(node, results)
+      saved_vars = @symbol_table.current_scope_vars.dup
+      begin
+        collect_new_assigned_vars(node, results)
+      ensure
+        @symbol_table.current_scope_vars = saved_vars
+      end
       results.uniq! { |r| r[0] }
       results
     end
@@ -888,6 +1224,7 @@ module CrShader
           var_name = node.target.as(Crystal::Var).name
           if !@symbol_table.is_builtin?(var_name) && !@symbol_table.variable_declared?(var_name)
             type_name = @symbol_table.infer_type(node.value)
+            @symbol_table.current_scope_vars[var_name] ||= type_name
             results << {var_name, type_name}
           end
         end

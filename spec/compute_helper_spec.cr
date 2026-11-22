@@ -9,19 +9,28 @@ describe "CrShader::ComputeHelper" do
     helper.uniform_set_dirty.should be_true
   end
 
-  it "tracks image, texture, and storage buffer bindings" do
+  it "tracks image, sampler+texture, texture, UBO, and storage buffer bindings with Godot 4 UniformType IDs" do
     helper = CrShader::ComputeHelper.new(nil)
     helper.bind_image(0, 1001_i64)
     helper.bind_texture(1, 1002_i64)
     helper.bind_storage_buffer(2, 1003_i64)
+    helper.bind_sampler_with_texture(3, 1004_i64, linear: false)
+    helper.bind_uniform_buffer(0, 1005_i64, set_index: 1)
+    helper.set_push_constant(Bytes[1_u8, 2_u8, 3_u8, 4_u8])
 
-    helper.bindings.size.should eq(3)
+    helper.bindings.size.should eq(4)
     helper.bindings[0].rid.should eq(1001_i64)
-    helper.bindings[0].uniform_type.should eq(8) # Image
+    helper.bindings[0].uniform_type.should eq(3) # UNIFORM_TYPE_IMAGE
     helper.bindings[1].rid.should eq(1002_i64)
-    helper.bindings[1].uniform_type.should eq(7) # Texture
+    helper.bindings[1].uniform_type.should eq(2) # UNIFORM_TYPE_TEXTURE
     helper.bindings[2].rid.should eq(1003_i64)
-    helper.bindings[2].uniform_type.should eq(6) # StorageBuffer
+    helper.bindings[2].uniform_type.should eq(8) # UNIFORM_TYPE_STORAGE_BUFFER
+    helper.bindings[3].rid.should eq(1004_i64)
+    helper.bindings[3].uniform_type.should eq(1) # UNIFORM_TYPE_SAMPLER_WITH_TEXTURE
+
+    helper.set_bindings[1][0].rid.should eq(1005_i64)
+    helper.set_bindings[1][0].uniform_type.should eq(7)  # UNIFORM_TYPE_UNIFORM_BUFFER
+    helper.push_constant_bytes.try(&.size).should eq(16) # Aligned to 16 bytes for Vulkan
 
     helper.uniform_set_dirty.should be_true
   end

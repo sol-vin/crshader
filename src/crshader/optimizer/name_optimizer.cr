@@ -39,7 +39,7 @@ module CrShader
         "length", "distance", "dot", "cross", "normalize", "faceforward",
         "reflect", "refract", "matrixCompMult", "outerProduct", "transpose",
         "determinant", "inverse", "texture", "textureLod", "textureProj",
-        "texelFetch", "textureSize", "imageLoad", "imageStore", "imageSize"
+        "texelFetch", "textureSize", "imageLoad", "imageStore", "imageSize",
       }
 
       getter protected_names : Set(String)

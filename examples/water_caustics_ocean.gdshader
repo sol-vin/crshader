@@ -2,18 +2,19 @@ shader_type spatial;
 
 render_mode cull_disabled, depth_draw_always;
 
-group_uniforms Water Colors;
+group_uniforms Water_Colors;
 uniform vec4 shallow_color : source_color = vec4(0.2, 0.75, 0.85, 0.85);
 uniform vec4 deep_color : source_color = vec4(0.05, 0.15, 0.35, 0.95);
 uniform vec4 foam_color : source_color = vec4(0.9, 0.95, 1.0, 1.0);
-group_uniforms Waves & Motion;
+group_uniforms Waves_Motion;
 uniform float wave_speed : hint_range(0.1, 5.0, 0.1) = 1.4;
 uniform float wave_height : hint_range(0.0, 1.0, 0.05) = 0.25;
 uniform float wave_frequency : hint_range(0.5, 6.0, 0.1) = 1.8;
-group_uniforms Caustics & Optics;
+group_uniforms Caustics_Optics;
 uniform float caustics_scale : hint_range(1.0, 20.0, 0.5) = 8.0;
 uniform float caustics_speed : hint_range(0.1, 3.0, 0.1) = 0.8;
 uniform float roughness_val : hint_range(0.0, 1.0, 0.05) = 0.15;
+group_uniforms;
 
 varying vec3 v_world_pos;
 

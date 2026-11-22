@@ -16,8 +16,8 @@ module CrShader
       if arg = call.args.first?
         @mode = case arg
                 when Crystal::SymbolLiteral, Crystal::StringLiteral then arg.value
-                when Crystal::Var then arg.name
-                else "normals"
+                when Crystal::Var                                   then arg.name
+                else                                                     "normals"
                 end
       end
       true

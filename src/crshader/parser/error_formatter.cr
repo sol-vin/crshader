@@ -10,7 +10,7 @@ module CrShader
       @filename : String? = nil,
       @line_number : Int32? = nil,
       @column_number : Int32? = nil,
-      @tip : String? = nil
+      @tip : String? = nil,
     )
       super(message)
     end

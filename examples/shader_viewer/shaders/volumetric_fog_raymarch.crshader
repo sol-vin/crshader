@@ -5,7 +5,6 @@ require "std/math"
 require "std/atmosphere"
 
 uniform screen_tex : Sampler2D, hint: :screen_texture, filter: :linear
-uniform depth_tex : Sampler2D, hint: :depth_texture, filter: :nearest
 
 group "Fog Properties"
 uniform fog_density : Float32 = 0.04, hint: range(0.001, 0.2, 0.005)
@@ -20,8 +19,7 @@ uniform max_distance : Float32 = 40.0, hint: range(5.0, 100.0, 5.0)
 
 def fragment
   scene_color = texture(screen_tex, SCREEN_UV)
-  depth_val = texture(depth_tex, SCREEN_UV).x
-  
+
   ray_dir = normalize(vec3((SCREEN_UV.x - 0.5) * 1.6, (0.5 - SCREEN_UV.y) * 1.2, -1.0))
   sun_dir = normalize(sun_direction)
   

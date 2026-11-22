@@ -28,7 +28,7 @@ module CrShader
       "hyperplink2", "no-failed", "ochre-ruin", "pastel-16-cnh", "pen-x-pen-plus",
       "pixel-8", "reddy-for-marshmallows", "rgr-blueprint4", "screen-burn-monitor",
       "silkpukian-24", "soggy-sepia-crt-20", "someday-ill-get-it", "summer",
-      "tachycardia", "tiny-c64", "vanitas", "vignette", "vinculum"
+      "tachycardia", "tiny-c64", "vanitas", "vignette", "vinculum",
     ]
 
     def initialize(pointer : Void* = Pointer(Void).null)
@@ -45,7 +45,7 @@ module CrShader
           Godot::Color.new(0.05_f32, 0.05_f32, 0.05_f32, 1.0_f32),
           Godot::Color.new(0.30_f32, 0.30_f32, 0.30_f32, 1.0_f32),
           Godot::Color.new(0.65_f32, 0.65_f32, 0.65_f32, 1.0_f32),
-          Godot::Color.new(0.95_f32, 0.95_f32, 0.95_f32, 1.0_f32)
+          Godot::Color.new(0.95_f32, 0.95_f32, 0.95_f32, 1.0_f32),
         ]
       end
 

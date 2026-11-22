@@ -7,7 +7,9 @@ describe "CrShader Standard Library Graphics Expansion" do
     expected_modules = [
       "math", "noise", "color", "lighting", "sdf", "tonemap",
       "triplanar", "post_processing", "compositor",
-      "dither", "curl_noise", "color_spaces", "atmosphere", "glitch"
+      "dither", "curl_noise", "color_spaces", "atmosphere", "glitch",
+      "outline", "outline/directions", "outline/depth_normal",
+      "outline/id_packing", "outline/morphology",
     ]
 
     expected_modules.each do |mod_name|

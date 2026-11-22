@@ -1,0 +1,77 @@
+# =============================================================================
+# Multi-Cue Compositor Outline (Reverse-Z Depth + Forward+ Normals + Boil)
+# =============================================================================
+# Production-ready Godot 4.8 CompositorEffect outline pass powered by `std/outline`.
+# Combines exact Reverse-Z view-space depth silhouettes, grazing-angle threshold
+# compensation, Forward+ normal_roughness crease detection, configurable 4..24
+# directional neighborhood taps, and optional 90s Squigglevision boiling wobble.
+
+require "std/outline"
+
+compositor_effect :post_opaque do
+  access :color, :depth, :normal_roughness, :scene_data
+
+  # Primary outline stroke color and opacity
+  property outline_color : Color = Color.hex("#120d26"), hint: :source_color
+  # Outline radius in pixels
+  property outline_thickness : Float32 = 1.5, hint: hint_range(0.5, 6.0, 0.25)
+  # Directional neighbor tap count (4, 8, 16, or 24)
+  property sample_directions : Int32 = 8, hint: hint_range(4, 24, 4)
+  # Relative depth discontinuity threshold
+  property depth_threshold : Float32 = 0.08, hint: hint_range(0.005, 0.5, 0.005)
+  # Normal crease angle discontinuity threshold
+  property normal_threshold : Float32 = 0.35, hint: hint_range(0.05, 1.5, 0.05)
+  # Grazing angle compensation scale to prevent flat-floor false outlines
+  property grazing_scale : Float32 = 4.0, hint: hint_range(0.0, 12.0, 0.25)
+  # Hand-drawn Squigglevision boiling wobble amplitude (0 = crisp geometric stroke)
+  property boil_amp : Float32 = 0.0, hint: hint_range(0.0, 1.0, 0.05)
+  # Spatial frequency of the boiling contour wobble
+  property boil_freq : Float32 = 10.0, hint: hint_range(1.0, 30.0, 0.5)
+
+  process_pixel do |coord, uv, color|
+    raw_d = texelFetch(depth_texture, coord, 0).r
+    # In Godot 4.8 Reverse-Z, sky/far clear depth is 0.0
+    if raw_d > 0.00001
+      boil = outline_boiling_scale(uv, TIME, boil_amp, boil_freq)
+      radius_px = max(outline_thickness * boil, 0.5)
+      max_c = size - ivec2(1, 1)
+      pixel_uv = vec2(1.0, 1.0) / vec2(float(size.x), float(size.y))
+
+      view_pos = reconstruct_view_pos(uv, raw_d, INV_PROJECTION_MATRIX)
+      d_center = -view_pos.z
+      nr_center = unpack_normal_roughness(texelFetch(normal_roughness_texture, coord, 0))
+      n_center = nr_center.xyz
+
+      view_dir = normalize(-view_pos)
+      grazing_mult = grazing_depth_scale(n_center, view_dir, grazing_scale)
+      tap_count = clamp(sample_directions, 4, 24)
+
+      max_crease = 0.0
+      hit_depth = false
+
+      (0...24).each do |i|
+        if i < tap_count
+          dir = OUTLINE_DIRS_24[i]
+          offset_px = ivec2(int(round(dir.x * radius_px)), int(round(dir.y * radius_px)))
+          n_coord = clamp(coord + offset_px, ivec2(0, 0), max_c)
+          n_uv = clamp(uv + dir * pixel_uv * radius_px, vec2(0.0005), vec2(0.9995))
+
+          n_raw_d = texelFetch(depth_texture, n_coord, 0).r
+          n_depth = linear_depth_reverse_z(n_uv, n_raw_d, INV_PROJECTION_MATRIX)
+          if is_depth_edge(d_center, n_depth, depth_threshold, grazing_mult)
+            hit_depth = true
+          end
+
+          n_nr = unpack_normal_roughness(texelFetch(normal_roughness_texture, n_coord, 0))
+          crease = 1.0 - clamp(dot(n_center, n_nr.xyz), -1.0, 1.0)
+          max_crease = max(max_crease, crease)
+        end
+      end
+
+      if hit_depth || (max_crease > normal_threshold)
+        blended = mix(color.rgb, outline_color.rgb, outline_color.a)
+        color = vec4(blended, color.a)
+      end
+    end
+  end
+end

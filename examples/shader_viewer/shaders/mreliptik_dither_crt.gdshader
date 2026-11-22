@@ -23,7 +23,7 @@ void fragment() {
 	float scanline;
 	int px;
 	int py;
-	float bayer_idx;
+	int bayer_idx;
 	float dither_threshold;
 	if (((((uv.x < 0.0) || (uv.x > 1.0)) || (uv.y < 0.0)) || (uv.y > 1.0))) {
 		COLOR = vec4(0.0, 0.0, 0.0, 1.0);

@@ -30,8 +30,9 @@ describe "CrShader Uniform Hints & Groups" do
     # Transpilation check
     compiled = CrShader.compile(source)
     compiled.should contain("group_uniforms Lighting;")
-    compiled.should contain("group_uniforms.Parameters;")
+    compiled.should contain("group_uniforms Lighting.Parameters;")
     compiled.should contain("uniform float speed : hint_range(0.0, 5.0, 0.1) = 1.0;")
     compiled.should contain("uniform vec4 tint : source_color")
+    compiled.should contain("group_uniforms;")
   end
 end

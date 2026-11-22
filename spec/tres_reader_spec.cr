@@ -39,7 +39,7 @@ describe "CrShader::TresReader (ColorPalette)" do
     temp_path = File.join("scratch", "spec_test_palette.tres")
     test_colors = [
       {0.1_f32, 0.2_f32, 0.3_f32, 1.0_f32},
-      {0.4_f32, 0.5_f32, 0.6_f32, 1.0_f32}
+      {0.4_f32, 0.5_f32, 0.6_f32, 1.0_f32},
     ]
 
     ok = CrShader::TresReader.write_color_palette(temp_path, test_colors)

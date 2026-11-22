@@ -11,7 +11,7 @@ varying vec2 v_affine_uv;
 varying float v_clip_w;
 
 void vertex() {
-	mat4 clip_pos = ((PROJECTION_MATRIX * MODELVIEW_MATRIX) * vec4(VERTEX, 1.0));
+	vec4 clip_pos = ((PROJECTION_MATRIX * MODELVIEW_MATRIX) * vec4(VERTEX, 1.0));
 	vec2 ndc = (clip_pos.xy / clip_pos.w);
 	vec2 snapped_ndc = (floor((ndc * jitter_resolution)) / jitter_resolution);
 	clip_pos.xy=((snapped_ndc * clip_pos.w));
@@ -26,7 +26,7 @@ void vertex() {
 
 void fragment() {
 	vec2 uv = ((affine_mapping) ? ((v_affine_uv / v_clip_w)) : (UV));
-	float tex_color = texture(albedo_texture, uv);
+	vec4 tex_color = texture(albedo_texture, uv);
 	vec3 quantized_rgb = (floor((tex_color.rgb * color_depth)) / color_depth);
 	ALBEDO = quantized_rgb;
 	ALPHA = tex_color.a;

@@ -1,0 +1,25 @@
+# ==============================================================================
+# Fused Single-Pass Post-Processing Stack - `screen_effect` + Post Traits
+# ==============================================================================
+# Fuses chromatic aberration, shockwave ripple, exposure/contrast/saturation
+# color grading, vignette, and animated film grain into ONE single GPU draw call!
+
+screen_effect do |uv, color|
+  feature :enable_shockwave, default: false
+  feature :enable_grain, default: true
+
+  when_feature :enable_shockwave do
+    use_trait "std/traits/shockwave_ripple"
+  end
+
+  use_trait "std/traits/chromatic_aberration"
+  use_trait "std/traits/color_grade"
+  use_trait "std/traits/vignette"
+
+  when_feature :enable_grain do
+    use_trait "std/traits/film_grain"
+  end
+
+  inspect :input_luma, color.luminance
+  color
+end

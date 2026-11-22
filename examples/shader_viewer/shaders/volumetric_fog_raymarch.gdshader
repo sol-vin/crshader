@@ -3,8 +3,7 @@ shader_type canvas_item;
 render_mode unshaded;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
-uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
-group_uniforms Fog Properties;
+group_uniforms Fog_Properties;
 uniform float fog_density : hint_range(0.001, 0.2, 0.005) = 0.04;
 uniform vec4 fog_color : source_color = vec4(0.65, 0.75, 0.9, 1.0);
 uniform vec4 sun_color : source_color = vec4(1.0, 0.85, 0.6, 1.0);
@@ -13,6 +12,7 @@ group_uniforms Raymarching;
 uniform int ray_steps : hint_range(8, 64, 4) = 24;
 uniform float scattering_g : hint_range(-0.9, 0.9, 0.05) = 0.45;
 uniform float max_distance : hint_range(5.0, 100.0, 5.0) = 40.0;
+group_uniforms;
 
 float hg_phase(float cos_theta, float g) {
 	float g2 = (g * g);
@@ -22,8 +22,7 @@ float hg_phase(float cos_theta, float g) {
 }
 
 void fragment() {
-	float scene_color = texture(screen_tex, SCREEN_UV);
-	float depth_val = texture(depth_tex, SCREEN_UV).x;
+	vec4 scene_color = texture(screen_tex, SCREEN_UV);
 	vec3 ray_dir = normalize(vec3(((SCREEN_UV.x - 0.5) * 1.6), ((0.5 - SCREEN_UV.y) * 1.2), -1.0));
 	vec3 sun_dir = normalize(sun_direction);
 	float cos_theta = dot(ray_dir, sun_dir);

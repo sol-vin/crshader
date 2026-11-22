@@ -53,7 +53,7 @@ module CrShader
       def initialize(
         @px : Float32 = 0.0_f32, @py : Float32 = 0.0_f32, @pz : Float32 = 0.0_f32, @life : Float32 = 1.0_f32,
         @vx : Float32 = 0.0_f32, @vy : Float32 = 0.0_f32, @vz : Float32 = 0.0_f32, @max_life : Float32 = 1.0_f32,
-        @r : Float32 = 1.0_f32, @g : Float32 = 1.0_f32, @b : Float32 = 1.0_f32, @scale : Float32 = 1.0_f32
+        @r : Float32 = 1.0_f32, @g : Float32 = 1.0_f32, @b : Float32 = 1.0_f32, @scale : Float32 = 1.0_f32,
       )
       end
 
@@ -116,7 +116,7 @@ module CrShader
         @z : Float32 = 0.0_f32,
         @strength : Float32 = 10.0_f32,
         @radius : Float32 = 25.0_f32,
-        @falloff : Float32 = 2.0_f32
+        @falloff : Float32 = 2.0_f32,
       )
       end
     end
@@ -136,7 +136,7 @@ module CrShader
         @mode : BoundaryMode = BoundaryMode::Bounce,
         @min_x : Float32 = -10.0_f32, @min_y : Float32 = 0.0_f32, @min_z : Float32 = -10.0_f32,
         @max_x : Float32 = 10.0_f32, @max_y : Float32 = 20.0_f32, @max_z : Float32 = 10.0_f32,
-        @restitution : Float32 = 0.7_f32
+        @restitution : Float32 = 0.7_f32,
       )
       end
     end
@@ -162,7 +162,7 @@ module CrShader
         @gravity_z : Float32 = 0.0_f32,
         @drag : Float32 = 0.05_f32,
         @turbulence_strength : Float32 = 1.0_f32,
-        @time : Float32 = 0.0_f32
+        @time : Float32 = 0.0_f32,
       )
       end
 
@@ -201,7 +201,7 @@ module CrShader
         @capacity : Int32 = 1024,
         @local_size_x : Int32 = 64,
         @integrator : IntegratorMode = IntegratorMode::SemiImplicitEuler,
-        @bounds : DomainBounds = DomainBounds.new
+        @bounds : DomainBounds = DomainBounds.new,
       )
         @capacity = 1 if @capacity < 1
         @local_size_x = 1 if @local_size_x < 1

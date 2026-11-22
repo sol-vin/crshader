@@ -1,4 +1,7 @@
 require "compiler/crystal/syntax"
+require "./outline"
+require "./artist_libs"
+require "./traits"
 
 module CrShader
   module Std
@@ -381,27 +384,47 @@ module CrShader
       end
     CR
 
+    TRIPLANAR_COMBINED_LIB = "#{TRIPLANAR_LIB}\n#{UV_LIB}"
+
     REGISTRY = {
-      "math"            => MATH_LIB,
-      "noise"           => NOISE_LIB,
-      "color"           => COLOR_LIB,
-      "lighting"        => LIGHTING_LIB,
-      "sdf"             => SDF_LIB,
-      "tonemap"         => TONEMAP_LIB,
-      "triplanar"       => TRIPLANAR_LIB,
-      "post_processing" => POST_PROCESSING_LIB,
-      "compositor"      => COMPOSITOR_LIB,
-      "dither"          => DITHER_LIB,
-      "curl_noise"      => CURL_NOISE_LIB,
-      "color_spaces"    => COLOR_SPACES_LIB,
-      "atmosphere"      => ATMOSPHERE_LIB,
-      "glitch"          => GLITCH_LIB,
-      "particles"       => PARTICLES_LIB,
+      "math"                 => MATH_LIB,
+      "noise"                => NOISE_LIB,
+      "color"                => COLOR_LIB,
+      "lighting"             => LIGHTING_LIB,
+      "sdf"                  => SDF_LIB,
+      "sdf2d"                => SDF2D_LIB,
+      "blend"                => BLEND_LIB,
+      "easing"               => EASING_LIB,
+      "uv"                   => UV_LIB,
+      "tonemap"              => TONEMAP_LIB,
+      "triplanar"            => TRIPLANAR_COMBINED_LIB,
+      "post_processing"      => POST_PROCESSING_LIB,
+      "compositor"           => COMPOSITOR_LIB,
+      "dither"               => DITHER_LIB,
+      "curl_noise"           => CURL_NOISE_LIB,
+      "color_spaces"         => COLOR_SPACES_LIB,
+      "atmosphere"           => ATMOSPHERE_LIB,
+      "glitch"               => GLITCH_LIB,
+      "particles"            => PARTICLES_LIB,
+      "outline"              => OUTLINE_COMBINED_LIB,
+      "outline/directions"   => OUTLINE_DIRECTIONS_LIB,
+      "outline/depth_normal" => OUTLINE_DEPTH_NORMAL_LIB,
+      "outline/id_packing"   => OUTLINE_ID_PACKING_LIB,
+      "outline/morphology"   => OUTLINE_MORPHOLOGY_LIB,
     }
 
-    def self.load_module(mod_name : String) : Array(Crystal::Def)
+    def self.has_module?(mod_name : String) : Bool
       clean_name = mod_name.sub(/^std\//, "")
-      source = REGISTRY[clean_name]?
+      REGISTRY.has_key?(clean_name)
+    end
+
+    def self.module_source(mod_name : String) : String?
+      clean_name = mod_name.sub(/^std\//, "")
+      REGISTRY[clean_name]?
+    end
+
+    def self.load_module(mod_name : String) : Array(Crystal::Def)
+      source = module_source(mod_name)
       return [] of Crystal::Def unless source
 
       parsed = Crystal::Parser.new(source).parse

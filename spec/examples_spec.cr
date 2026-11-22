@@ -13,7 +13,8 @@ describe "CrShader Examples & Post-Processing Suite" do
   cr_files.each do |cr_file|
     base_name = File.basename(cr_file)
     it "compiles example #{base_name} without errors" do
-      target = base_name.includes?("compute") ? CrShader::ShaderTarget::GLSL : CrShader::ShaderTarget::GDShader
+      is_glsl = base_name.includes?("compute") || base_name.starts_with?("compositor_")
+      target = is_glsl ? CrShader::ShaderTarget::GLSL : CrShader::ShaderTarget::GDShader
       c = CrShader::Compiler.new(target_override: target, verbose: false)
       ext = target == CrShader::ShaderTarget::GLSL ? ".glsl" : ".gdshader"
       out_path = cr_file.sub(/\.crshader$/, ext)
@@ -29,17 +30,51 @@ describe "CrShader Examples & Post-Processing Suite" do
       else
         content.should contain("#version 450")
       end
+
+      # Keep examples/shader_viewer/shaders synced when a matching shader exists
+      viewer_cr = File.join(examples_dir, "shader_viewer/shaders", base_name)
+      if File.exists?(viewer_cr)
+        viewer_out = viewer_cr.sub(/\.crshader$/, ext)
+        c.compile_file(viewer_cr, viewer_out)
+      end
     end
   end
 
-  it "validates all compiled GDShaders via headless Godot engine" do
-    godot_exe = File.expand_path("../../../godot.exe", __DIR__)
-    if File.exists?(godot_exe)
-      cmd = "Start-Process -FilePath '#{godot_exe}' -ArgumentList '--headless', '--path', '#{File.expand_path("..", __DIR__)}', '-s', 'scripts/validate_shaders.gd' -NoNewWindow -Wait"
-      status = Process.run("powershell", ["-Command", cmd])
-      status.success?.should be_true
+  it "validates all compiled GDShaders and GLSL SPIR-V shaders via headless Godot engine" do
+    repo_root = File.expand_path("..", __DIR__)
+    candidates = [
+      File.expand_path("../godot.exe", __DIR__),
+      File.expand_path("../../godot.exe", __DIR__),
+      File.expand_path("../../../godot.exe", __DIR__),
+    ]
+    godot_exe = candidates.find { |p| File.exists?(p) }
+    if godot_exe
+      log_path = File.join(repo_root, "validation_log.txt")
+      File.delete(log_path) if File.exists?(log_path)
+
+      err_io = IO::Memory.new
+      status = Process.run(
+        godot_exe,
+        ["--no-window", "--audio-driver", "Dummy", "--path", repo_root, "-s", "scripts/validate_shaders.gd"],
+        output: Process::Redirect::Close,
+        error: err_io
+      )
+      if !status.success? && !File.exists?(log_path)
+        err_io.clear
+        status = Process.run(
+          godot_exe,
+          ["--headless", "--path", repo_root, "-s", "scripts/validate_shaders.gd"],
+          output: Process::Redirect::Close,
+          error: err_io
+        )
+      end
+
+      log_text = File.exists?(log_path) ? File.read(log_path) : ""
+      err_text = err_io.to_s
+      File.delete(log_path) if File.exists?(log_path)
+      status.success?.should be_true, "Godot shader validation failed:\n#{log_text}\n#{err_text}"
+      err_text.includes?("SHADER ERROR:").should be_false, "Godot reported SHADER ERROR on STDERR:\n#{err_text}"
     else
-      # If godot is not at root, pass
       true.should be_true
     end
   end

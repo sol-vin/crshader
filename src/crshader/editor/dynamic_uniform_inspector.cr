@@ -1,6 +1,7 @@
 require "lapis"
 require "../ast/shader_ast"
 require "../parser/dsl_parser"
+require "../compositor/compositor_effect_base"
 require "./variable_array_control"
 require "./procedural_textures"
 
@@ -37,27 +38,58 @@ module CrShader
         @max_v : Float64,
         @speed : Float64,
         @slider : Godot::HSlider,
-        @val_label : Godot::Label? = nil
+        @val_label : Godot::Label? = nil,
       )
       end
     end
 
     property active_material : Godot::ShaderMaterial? = nil
+    property active_compositor_effect : CRShaderCompositorEffect? = nil
     property default_values = Hash(String, Float64).new
     property current_program : ShaderProgram? = nil
     property lfos = Hash(String, LFOState).new
     property elapsed_time : Float64 = 0.0
+    property feature_values = Hash(String, FeatureValue).new
+    property on_features_changed : Proc(Hash(String, FeatureValue), Void)? = nil
 
     def initialize(pointer : Void* = Pointer(Void).null)
       super(pointer)
     end
 
-    def configure(program : ShaderProgram, material : Godot::ShaderMaterial?) : Void
+    def configure(
+      program : ShaderProgram,
+      material : Godot::ShaderMaterial?,
+      compositor_effect : CRShaderCompositorEffect? = nil,
+      active_features : Hash(String, FeatureValue)? = nil,
+      on_features_changed : Proc(Hash(String, FeatureValue), Void)? = nil,
+    ) : Void
       clear_controls
       @active_material = material
+      @active_compositor_effect = compositor_effect
       @current_program = program
       @default_values.clear
       @lfos.clear
+      @on_features_changed = on_features_changed if on_features_changed
+
+      if active_features
+        @feature_values = active_features.dup
+      end
+
+      # Specialization Features Section (zero-branch GPU variants)
+      unless program.features.empty?
+        feat_hdr = Godot.create(Godot::Label)
+        if feat_hdr
+          feat_hdr.call("set_text", "⚡ Specialization Features (#{program.features.size})")
+          feat_hdr.call("add_theme_font_size_override", "font_size", 12)
+          feat_hdr.call("add_theme_color_override", "font_color", Godot::Color.new(1.0_f32, 0.85_f32, 0.35_f32, 1.0_f32))
+          call("add_child", feat_hdr)
+        end
+
+        program.features.each do |feat|
+          f_ctrl = create_widget_for_feature(feat)
+          call("add_child", f_ctrl) if f_ctrl
+        end
+      end
 
       # Top toolbar for parameter count, copy DSL, and quick reset
       header = Godot.create(Godot::HBoxContainer)
@@ -121,11 +153,15 @@ module CrShader
       end
     end
 
-    def configure_from_source(source : String, material : Godot::ShaderMaterial?) : Void
+    def configure_from_source(
+      source : String,
+      material : Godot::ShaderMaterial?,
+      compositor_effect : CRShaderCompositorEffect? = nil,
+    ) : Void
       parser = DslParser.new
       begin
         program = parser.parse(source)
-        configure(program, material)
+        configure(program, material, compositor_effect)
       rescue ex
         # Handle syntax error gracefully
       end
@@ -244,10 +280,10 @@ module CrShader
 
       labels = ["X", "Y", "Z", "W"]
       colors = [
-        Color.new(0.9_f32, 0.35_f32, 0.35_f32, 1.0_f32), # Red
-        Color.new(0.4_f32, 0.85_f32, 0.4_f32, 1.0_f32), # Green
-        Color.new(0.35_f32, 0.65_f32, 1.0_f32, 1.0_f32), # Blue
-        Color.new(0.85_f32, 0.85_f32, 0.85_f32, 1.0_f32) # Alpha
+        Color.new(0.9_f32, 0.35_f32, 0.35_f32, 1.0_f32),  # Red
+        Color.new(0.4_f32, 0.85_f32, 0.4_f32, 1.0_f32),   # Green
+        Color.new(0.35_f32, 0.65_f32, 1.0_f32, 1.0_f32),  # Blue
+        Color.new(0.85_f32, 0.85_f32, 0.85_f32, 1.0_f32), # Alpha
       ]
 
       vals = [0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64]
@@ -290,16 +326,19 @@ module CrShader
     end
 
     private def sync_vector_parameter(name : String, components : Int32, vals : Array(Float64)) : Void
-      mat = @active_material
-      return unless mat
-
       case components
       when 2
-        mat.call("set_shader_parameter", name, Vector2.new(vals[0].to_f32, vals[1].to_f32))
+        v2 = Godot::Vector2.new(vals[0].to_f32, vals[1].to_f32)
+        @active_material.try &.call("set_shader_parameter", name, v2)
+        @active_compositor_effect.try &.set_shader_parameter(name, v2)
       when 3
-        mat.call("set_shader_parameter", name, Vector3.new(vals[0].to_f32, vals[1].to_f32, vals[2].to_f32))
+        v3 = Godot::Vector3.new(vals[0].to_f32, vals[1].to_f32, vals[2].to_f32)
+        @active_material.try &.call("set_shader_parameter", name, v3)
+        @active_compositor_effect.try &.set_shader_parameter(name, v3)
       when 4
-        mat.call("set_shader_parameter", name, Color.new(vals[0].to_f32, vals[1].to_f32, vals[2].to_f32, vals[3].to_f32))
+        c4 = Godot::Color.new(vals[0].to_f32, vals[1].to_f32, vals[2].to_f32, vals[3].to_f32)
+        @active_material.try &.call("set_shader_parameter", name, c4)
+        @active_compositor_effect.try &.set_shader_parameter(name, c4)
       end
     end
 
@@ -346,6 +385,7 @@ module CrShader
           new_v = args.first?.try(&.as_f) || 0.0_f64
           val_label.try &.call("set_text", sprintf("%.2f", new_v))
           @active_material.try &.call("set_shader_parameter", u.name, new_v.to_f32)
+          @active_compositor_effect.try &.set_shader_parameter(u.name, new_v.to_f32)
         end
         row.call("add_child", slider)
       end
@@ -412,6 +452,9 @@ module CrShader
         picker.connect("color_changed") do |args|
           if new_color = args.first?
             @active_material.try &.call("set_shader_parameter", u.name, new_color)
+            if col = new_color.try(&.as_color)
+              @active_compositor_effect.try &.set_shader_parameter(u.name, col)
+            end
           end
         end
         row.call("add_child", picker)
@@ -433,8 +476,91 @@ module CrShader
         check.connect("toggled") do |args|
           is_on = args.first?.try(&.as_bool) || false
           @active_material.try &.call("set_shader_parameter", u.name, is_on)
+          @active_compositor_effect.try &.set_shader_parameter(u.name, is_on)
         end
         row.call("add_child", check)
+      end
+
+      row
+    end
+
+    private def create_widget_for_feature(feat : FeatureDecl) : Godot::Control
+      row = Godot.create(Godot::HBoxContainer)
+      return Godot.create(Godot::Control).not_nil! unless row
+      row.call("add_theme_constant_override", "separation", 6)
+
+      case feat.kind
+      when FeatureKind::Bool
+        check = Godot.create(Godot::CheckBox)
+        if check
+          check.call("set_text", "FEATURE_#{feat.name.upcase}")
+          is_active = feat.active_value == "true" || feat.active_value == "1"
+          check.call("set_pressed", is_active)
+          if doc = feat.doc_comment
+            check.call("set_tooltip_text", doc)
+          end
+          check.connect("toggled") do |args|
+            new_on = args.first?.try(&.as_bool) || false
+            @feature_values[feat.name] = new_on
+            @on_features_changed.try(&.call(@feature_values))
+          end
+          row.call("add_child", check)
+        end
+      when FeatureKind::Enum
+        lbl = Godot.create(Godot::Label)
+        if lbl
+          lbl.call("set_custom_minimum_size", Godot::Vector2.new(110_f32, 0_f32))
+          lbl.call("set_text", "#{feat.name.capitalize}:")
+          row.call("add_child", lbl)
+        end
+
+        opt = Godot.create(Godot::OptionButton)
+        if opt
+          opt.call("set_h_size_flags", 3)
+          sel_idx = 0
+          feat.options.each_with_index do |opt_str, idx|
+            opt.call("add_item", opt_str, idx)
+            sel_idx = idx if opt_str == feat.active_value
+          end
+          opt.call("select", sel_idx)
+          opt.connect("item_selected") do |args|
+            chosen_idx = args.first?.try(&.as_i) || 0
+            chosen_val = feat.options[chosen_idx]? || feat.default_value
+            @feature_values[feat.name] = chosen_val
+            @on_features_changed.try(&.call(@feature_values))
+          end
+          row.call("add_child", opt)
+        end
+      when FeatureKind::Int
+        lbl = Godot.create(Godot::Label)
+        if lbl
+          lbl.call("set_custom_minimum_size", Godot::Vector2.new(110_f32, 0_f32))
+          lbl.call("set_text", "#{feat.name.capitalize}:")
+          row.call("add_child", lbl)
+        end
+
+        slider = Godot.create(Godot::HSlider)
+        val_lbl = Godot.create(Godot::Label)
+        curr_iv = feat.active_value.to_i? || 1
+        if slider
+          slider.call("set_h_size_flags", 3)
+          slider.call("set_min", 1.0)
+          slider.call("set_max", 32.0)
+          slider.call("set_step", 1.0)
+          slider.call("set_value", curr_iv.to_f64)
+          slider.connect("value_changed") do |args|
+            nv = (args.first?.try(&.as_f) || 1.0).round.to_i32
+            val_lbl.try &.call("set_text", nv.to_s)
+            @feature_values[feat.name] = nv
+            @on_features_changed.try(&.call(@feature_values))
+          end
+          row.call("add_child", slider)
+        end
+        if val_lbl
+          val_lbl.call("set_custom_minimum_size", Godot::Vector2.new(32_f32, 0_f32))
+          val_lbl.call("set_text", curr_iv.to_s)
+          row.call("add_child", val_lbl)
+        end
       end
 
       row
@@ -446,8 +572,8 @@ module CrShader
 
       lbl = Godot.create(Godot::Label)
       if lbl
-        lbl.call("set_custom_minimum_size", Vector2.new(110_f32, 0_f32))
-        lbl.call("set_text", "#{u.name.capitalize}:")
+        lbl.call("set_custom_minimum_size", Godot::Vector2.new(110_f32, 0_f32))
+        lbl.call("set_text", "#{u.name == "debug_view" ? "🔍 Debug View" : u.name.capitalize}:")
         row.call("add_child", lbl)
       end
 
@@ -455,15 +581,18 @@ module CrShader
       if opt
         opt.call("set_h_size_flags", 3)
         if m = enum_hint.match(/hint_enum\((.+)\)/)
-          items = m[1].split(',').map(&.strip.gsub(/['"]/, ""))
+          items = m[1].split(',').map(&.strip.gsub(/['"]/, "")).reject(&.empty?)
           items.each_with_index do |item_str, idx|
             opt.call("add_item", item_str, idx)
           end
+          def_idx = u.default_value.try(&.to_s.to_i?) || 0
+          opt.call("select", def_idx) if def_idx >= 0 && def_idx < items.size
         end
 
         opt.connect("item_selected") do |args|
           selected_idx = args.first?.try(&.as_i) || 0
           @active_material.try &.call("set_shader_parameter", u.name, selected_idx)
+          @active_compositor_effect.try &.set_shader_parameter(u.name, selected_idx.to_i32)
         end
         row.call("add_child", opt)
       end
@@ -475,6 +604,7 @@ module CrShader
       @lfos.clear
       @default_values.each do |param_name, def_v|
         @active_material.try &.call("set_shader_parameter", param_name, def_v.to_f32)
+        @active_compositor_effect.try &.set_shader_parameter(param_name, def_v.to_f32)
       end
     end
 
@@ -511,6 +641,7 @@ module CrShader
         lfo.slider.call("set_value", v)
         lfo.val_label.try &.call("set_text", sprintf("%.2f", v))
         @active_material.try &.call("set_shader_parameter", param_name, v.to_f32)
+        @active_compositor_effect.try &.set_shader_parameter(param_name, v.to_f32)
       end
     end
   end

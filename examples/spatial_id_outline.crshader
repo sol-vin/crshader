@@ -1,0 +1,72 @@
+# =============================================================================
+# Spatial Multi-Cue Surface ID + Reverse-Z Depth + Win98 Bevel / Boil Outline
+# =============================================================================
+# Fullscreen quad Spatial shader using `std/outline` to combine:
+# - Bit-packed surface/palette IDs encoded in screen alpha (`pack_outline_meta`)
+# - Closest-depth ownership across 24 sampling directions (foreground wins!)
+# - Grazing-angle Reverse-Z depth edge detection
+# - Retro Win98 highlight/shadow bevel tinting and stepped line boil
+shader_type :spatial
+render_mode :unshaded, :depth_draw_never, :depth_test_disabled, :cull_disabled
+
+require "std/outline"
+
+uniform screen_texture : Sampler2D, hint: :screen_texture, filter: :nearest, repeat: :disable
+uniform depth_texture : Sampler2D, hint: :depth_texture, filter: :nearest, repeat: :disable
+
+group "Outline"
+# Outline stroke thickness in pixels
+uniform outline_width : Float32 = 1.5, hint: range(0.5, 8.0, 0.5)
+# Linear view-space depth edge threshold
+uniform depth_threshold : Float32 = 0.08, hint: range(0.005, 1.0, 0.005)
+# Base outline RGBA color
+uniform outline_color : Vec4 = vec4(0.05, 0.04, 0.08, 1.0), hint: :source_color
+
+group "Outline"
+subgroup "RetroFX"
+# Win98 directional bevel highlight strength
+uniform bevel_highlight : Float32 = 0.2, hint: range(0.0, 1.0, 0.05)
+# Win98 directional bevel shadow strength
+uniform bevel_shadow : Float32 = 0.25, hint: range(0.0, 1.0, 0.05)
+# Stepped Squigglevision boil amplitude in pixels (0 disables)
+uniform boil_amplitude : Float32 = 0.0, hint: range(0.0, 4.0, 0.25)
+# Boil animation frame rate
+uniform boil_fps : Float32 = 8.0, hint: range(1.0, 24.0, 1.0)
+
+def vertex
+  POSITION = vec4(VERTEX.xy, 1.0, 1.0)
+end
+
+def fragment
+  texel = vec2(1.0) / VIEWPORT_SIZE
+  uv = apply_line_boil(SCREEN_UV, texel, TIME, boil_fps, boil_amplitude, 2.0)
+
+  center_raw = texture(screen_texture, uv)
+  center_id = decode_outline_pixel(center_raw)
+  center_z = linear_view_depth(uv, texture(depth_texture, uv).r, INV_PROJECTION_MATRIX)
+
+  best_z = 1000000.0
+  best_dir = vec2(0.0, -1.0)
+  edge_hit = false
+
+  (0...24).each do |i|
+    dir = OUTLINE_DIRS_24[i]
+    s_uv = clamp(uv + dir * texel * outline_width, vec2(0.0005), vec2(0.9995))
+
+    n_id = decode_outline_pixel(texture(screen_texture, s_uv))
+    n_z = linear_view_depth(s_uv, texture(depth_texture, s_uv).r, INV_PROJECTION_MATRIX)
+
+    id_edge = (center_id.valid && n_id.valid) && (center_id.surface_id != n_id.surface_id)
+    d_edge = is_depth_edge(center_z, n_z, depth_threshold, 1.0)
+
+    if (id_edge || d_edge) && (n_z < best_z)
+      best_z = n_z
+      best_dir = dir
+      edge_hit = true
+    end
+  end
+
+  beveled = apply_win98_bevel(outline_color.rgb, best_dir, bevel_highlight, bevel_shadow)
+  ALBEDO = edge_hit ? beveled : center_raw.rgb
+  ALPHA = edge_hit ? outline_color.a : 0.0
+end

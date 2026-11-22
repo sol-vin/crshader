@@ -1,3 +1,3 @@
 require "./crshader"
 
-CrShader::CLI.run
+CrShader::CLI.run_entrypoint

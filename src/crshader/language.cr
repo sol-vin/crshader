@@ -66,7 +66,7 @@ module CrShader
   #
   # ### Complete Shader Example
   #
-  # ```crystal
+  # ```
   # shader_type :spatial
   # render_mode :cull_disabled, :depth_draw_opaque
   #

@@ -20,6 +20,7 @@ module CrShader
     @highlighter : CodeHighlighter? = nil
     @found_files : Array(String) = [] of String
     @auto_compile : Bool = true
+    @release_strip : Bool = false
     @dirty : Bool = false
     @debounce_time : Float64 = 0.35_f64
     @last_error_line : Int32 = 0
@@ -72,6 +73,12 @@ module CrShader
         picker = Godot.create(Godot::OptionButton)
         if picker
           picker.call("set_custom_minimum_size", Vector2.new(200_f32, 0_f32))
+          picker.connect("item_selected") do |args|
+            idx = args.first?.try(&.as_i) || 0
+            if idx >= 0 && idx < @found_files.size
+              load_file(@found_files[idx])
+            end
+          end
           toolbar.call("add_child", picker)
           @file_picker = picker
         end
@@ -80,6 +87,9 @@ module CrShader
         compile_btn = Godot.create(Godot::Button)
         if compile_btn
           compile_btn.call("set_text", "▶ Compile")
+          compile_btn.connect("pressed") do |_args|
+            compile_current_source
+          end
           toolbar.call("add_child", compile_btn)
         end
 
@@ -92,6 +102,37 @@ module CrShader
             @auto_compile = args.first?.try(&.as_bool) || false
           end
           toolbar.call("add_child", auto_check)
+        end
+
+        # Release Strip Toggle (--release strips `inspect` probes)
+        rel_check = Godot.create(Godot::CheckBox)
+        if rel_check
+          rel_check.call("set_text", "--release")
+          rel_check.call("set_tooltip_text", "Strip `inspect(...)` probes and `debug_view` uniform for zero-cost release preview")
+          rel_check.call("set_pressed", false)
+          rel_check.connect("toggled") do |args|
+            @release_strip = args.first?.try(&.as_bool) || false
+            compile_current_source
+          end
+          toolbar.call("add_child", rel_check)
+        end
+
+        # Add Trait Dropdown
+        trait_opt = Godot.create(Godot::OptionButton)
+        if trait_opt
+          trait_opt.call("add_item", "🧩 Add Trait...", 0)
+          trait_list = Std.trait_names
+          trait_list.each_with_index do |tname, idx|
+            trait_opt.call("add_item", tname, idx + 1)
+          end
+          trait_opt.connect("item_selected") do |args|
+            idx = args.first?.try(&.as_i) || 0
+            if idx > 0 && idx <= trait_list.size
+              insert_trait_line(trait_list[idx - 1])
+              trait_opt.call("select", 0)
+            end
+          end
+          toolbar.call("add_child", trait_opt)
         end
 
         # Apply to Selected Node Button
@@ -109,6 +150,9 @@ module CrShader
         save_btn = Godot.create(Godot::Button)
         if save_btn
           save_btn.call("set_text", "💾 Save")
+          save_btn.connect("pressed") do |_args|
+            save_current_file
+          end
           toolbar.call("add_child", save_btn)
         end
 
@@ -116,6 +160,9 @@ module CrShader
         refresh_btn = Godot.create(Godot::Button)
         if refresh_btn
           refresh_btn.call("set_text", "🔄 Refresh")
+          refresh_btn.connect("pressed") do |_args|
+            refresh_file_list
+          end
           toolbar.call("add_child", refresh_btn)
         end
 
@@ -269,11 +316,20 @@ module CrShader
       compile_current_source(content)
     end
 
+    def insert_trait_line(trait_name : String) : Void
+      if edit = @source_edit
+        line_idx = edit.call_i64("get_caret_line").to_i32
+        edit.call("insert_line_at", line_idx, "use_trait \"std/traits/#{trait_name}\"\n")
+        @dirty = true
+        @debounce_time = 0.15_f64
+      end
+    end
+
     def compile_current_source(explicit_source : String? = nil) : Void
-      source = explicit_source || @source_edit.try(&.call("get_text").to_s) || ""
+      source = explicit_source || @source_edit.try(&.call_str("get_text")) || ""
       return if source.strip.empty?
 
-      compiler = Compiler.new
+      compiler = Compiler.new(strip_debug_inspects: @release_strip)
       begin
         target_code = compiler.compile_source(source, filename: @active_file)
         @target_edit.try &.call("set_text", target_code)
@@ -281,8 +337,12 @@ module CrShader
 
         # Write compiled file to disk if active file known
         if active = @active_file
-          is_compute = source.includes?("shader_type :compute") || source.includes?("shader_type(\"compute\")")
-          out_ext = is_compute ? ".glsl" : ".gdshader"
+          resolved_target = compiler.last_program.try(&.target) || ShaderTarget::GDShader
+          out_ext = case resolved_target
+                    when ShaderTarget::GLSL        then ".glsl"
+                    when ShaderTarget::GDShaderInc then ".gdshaderinc"
+                    else                                ".gdshader"
+                    end
           out_path = active.sub(/\.crshader$/, out_ext)
           File.write(out_path, target_code)
         end
@@ -295,7 +355,7 @@ module CrShader
 
     def save_current_file : Void
       if active = @active_file
-        source = @source_edit.try(&.call("get_text").to_s) || ""
+        source = @source_edit.try(&.call_str("get_text")) || ""
         File.write(active, source)
         compile_current_source
         set_status("💾 Saved and compiled #{active}", is_error: false)
@@ -329,19 +389,24 @@ module CrShader
       # 1. Keywords
       keywords = [
         "shader", "shader_type", "render_mode", "setup_gdshader",
-        "uniform", "instance_uniform", "global_uniform", "varying", "const",
+        "uniform", "property", "sampler", "instance_uniform", "global_uniform", "varying", "const",
+        "feature", "when_feature", "unless_feature", "shader_trait", "use_trait", "gradient", "curve", "inspect",
         "buffer", "push_constant", "shared", "image2d", "local_size", "require",
         "group", "subgroup", "field",
         "def", "end", "class", "struct", "module", "if", "else", "elsif", "unless",
         "while", "until", "for", "in", "case", "when", "return", "break", "next",
-        "true", "false", "nil", "macro"
+        "true", "false", "nil", "macro",
       ]
       keywords.each do |kw|
         highlighter.call("add_keyword_color", kw, kw_color)
       end
 
-      # 2. Stages
-      stages = ["vertex", "fragment", "light", "start", "process", "sky", "fog", "main"]
+      # 2. Stages & Archetypes
+      stages = [
+        "vertex", "fragment", "light", "start", "process", "sky", "fog", "main",
+        "sprite_effect", "screen_effect", "ui_effect", "surface_material",
+        "compositor_effect", "process_pixel", "on_vertex", "on_fragment", "on_light", "on_pixel",
+      ]
       stages.each do |st|
         highlighter.call("add_keyword_color", st, Color.new(1.0_f32, 0.4_f32, 0.6_f32, 1.0_f32))
       end
@@ -354,7 +419,7 @@ module CrShader
         "Sampler2D", "SamplerCube", "Sampler2DArray", "Sampler3D",
         "Sampler2DShadow", "SamplerCubeShadow", "Sampler2DArrayShadow",
         "ISampler2D", "USampler2D", "Image2D", "IImage2D", "UImage2D", "Image3D",
-        "SubpassInput", "Array", "InOut", "Out"
+        "SubpassInput", "Array", "InOut", "Out",
       ]
       types.each do |t|
         highlighter.call("add_keyword_color", t, type_color)
@@ -375,7 +440,7 @@ module CrShader
         "INDEX", "NUMBER", "SEED", "EYEDIR", "HALF_RES_COLOR", "QUARTER_RES_COLOR",
         "WORLD_POSITION", "FOG_COLOR", "DENSITY", "SDF",
         "gl_NumWorkGroups", "gl_WorkGroupSize", "gl_WorkGroupID",
-        "gl_LocalInvocationID", "gl_GlobalInvocationID", "gl_LocalInvocationIndex"
+        "gl_LocalInvocationID", "gl_GlobalInvocationID", "gl_LocalInvocationIndex",
       ]
       builtins.each do |b|
         highlighter.call("add_member_keyword_color", b, builtin_color)
@@ -396,5 +461,3 @@ module CrShader
 
   CRShaderStudioPanel = CrShaderStudioPanel
 end
-
-

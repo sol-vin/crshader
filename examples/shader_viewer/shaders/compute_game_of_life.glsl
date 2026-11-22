@@ -7,7 +7,7 @@ layout(rgba32f, set = 0, binding = 1) uniform image2D state_out;
 
 void main() {
 	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-	float size = imageSize(state_in);
+	ivec2 size = imageSize(state_in);
 	if (((coord.x >= size.x) || (coord.y >= size.y))) {
 		return;
 	}
@@ -15,7 +15,7 @@ void main() {
 	for (int dx = -1; dx <= 1; dx++) {
 		for (int dy = -1; dy <= 1; dy++) {
 			ivec2 neighbor_coord;
-			float cell;
+			vec4 cell;
 			if (((dx != 0) || (dy != 0))) {
 				neighbor_coord = (((coord + ivec2(dx, dy)) + size) % size);
 				cell = imageLoad(state_in, neighbor_coord);
@@ -25,8 +25,8 @@ void main() {
 			}
 		}
 	}
-	float current_cell = imageLoad(state_in, coord);
-	float currently_alive = (current_cell.r > 0.5);
+	vec4 current_cell = imageLoad(state_in, coord);
+	bool currently_alive = (current_cell.r > 0.5);
 	bool next_alive = false;
 	if (currently_alive) {
 		if (((live_neighbors == 2) || (live_neighbors == 3))) {

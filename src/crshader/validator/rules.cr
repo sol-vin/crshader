@@ -3,32 +3,32 @@ module CrShader::Validator
     # Allowed render modes per ShaderType in Godot 4.x
     VALID_RENDER_MODES = {
       ShaderType::Spatial => Set{
-        "blend_mix", "blend_add", "blend_sub", "blend_mul",
+        "blend_mix", "blend_add", "blend_sub", "blend_mul", "blend_premul_alpha",
         "depth_draw_opaque", "depth_draw_always", "depth_draw_never",
         "depth_prepass_alpha", "depth_test_disabled",
         "cull_back", "cull_front", "cull_disabled",
         "unshaded", "wireframe",
         "diffuse_burley", "diffuse_lambert", "diffuse_lambert_wrap", "diffuse_toon",
-        "specular_schlick_ggx", "specular_toon", "specular_disabled",
+        "specular_schlick_ggx", "specular_toon", "specular_disabled", "specular_occlusion_disabled",
         "skip_vertex_transform", "world_vertex_coords", "ensure_correct_normals",
         "shadows_disabled", "ambient_light_disabled", "fog_disabled",
         "particle_trails", "alpha_to_coverage", "alpha_to_coverage_and_one",
-        "shadow_to_opacity", "vertex_lighting"
+        "shadow_to_opacity", "vertex_lighting",
       },
       ShaderType::CanvasItem => Set{
         "blend_mix", "blend_add", "blend_sub", "blend_mul", "blend_premult_alpha", "blend_disabled",
-        "unshaded", "light_only", "skip_vertex_transform", "world_vertex_coords"
+        "unshaded", "light_only", "skip_vertex_transform", "world_vertex_coords",
       },
       ShaderType::Particles => Set{
-        "keep_data", "disable_force", "disable_velocity", "collision_use_scale"
+        "keep_data", "disable_force", "disable_velocity", "collision_use_scale",
       },
       ShaderType::Sky => Set{
-        "use_half_res_pass", "use_quarter_res_pass", "disable_fog"
+        "use_half_res_pass", "use_quarter_res_pass", "disable_fog",
       },
       ShaderType::Fog => Set{
-        "disabled"
+        "disabled",
       },
-      ShaderType::Compute => Set(String).new
+      ShaderType::Compute => Set(String).new,
     }
 
     # All known render modes across all types
@@ -38,15 +38,15 @@ module CrShader::Validator
     # Format: variable_name => Allowed stages
     STAGE_WRITABLE_BUILTINS = {
       # Vertex outputs
-      "VERTEX"                  => Set{"vertex"},
-      "POSITION"                => Set{"vertex", "sky"},
-      "NORMAL"                  => Set{"vertex", "fragment"},
-      "TANGENT"                 => Set{"vertex", "fragment"},
-      "BINORMAL"                => Set{"vertex", "fragment"},
-      "UV"                      => Set{"vertex"},
-      "UV2"                     => Set{"vertex"},
-      "POINT_SIZE"              => Set{"vertex"},
-      "COLOR"                   => Set{"vertex", "fragment", "light", "start", "process", "collide", "sky"},
+      "VERTEX"     => Set{"vertex"},
+      "POSITION"   => Set{"vertex", "sky"},
+      "NORMAL"     => Set{"vertex", "fragment"},
+      "TANGENT"    => Set{"vertex", "fragment"},
+      "BINORMAL"   => Set{"vertex", "fragment"},
+      "UV"         => Set{"vertex"},
+      "UV2"        => Set{"vertex"},
+      "POINT_SIZE" => Set{"vertex"},
+      "COLOR"      => Set{"vertex", "fragment", "light", "start", "process", "collide", "sky"},
 
       # Spatial Fragment outputs
       "ALBEDO"                  => Set{"fragment"},
@@ -73,21 +73,21 @@ module CrShader::Validator
       "DEPTH"                   => Set{"fragment"},
 
       # Light outputs
-      "DIFFUSE_LIGHT"           => Set{"light"},
-      "SPECULAR_LIGHT"          => Set{"light"},
-      "SHADOW_MODULATE"         => Set{"light"},
-      "LIGHT_VERTEX"            => Set{"light"},
-      "SHADOW_VERTEX"           => Set{"light"},
+      "DIFFUSE_LIGHT"   => Set{"light"},
+      "SPECULAR_LIGHT"  => Set{"light"},
+      "SHADOW_MODULATE" => Set{"light"},
+      "LIGHT_VERTEX"    => Set{"light"},
+      "SHADOW_VERTEX"   => Set{"light"},
 
       # Fog outputs
-      "DENSITY"                 => Set{"fog"},
-      "FOG_COLOR"               => Set{"fog"},
+      "DENSITY"   => Set{"fog"},
+      "FOG_COLOR" => Set{"fog"},
 
       # Particle outputs
-      "TRANSFORM"               => Set{"start", "process", "collide"},
-      "VELOCITY"                => Set{"start", "process", "collide"},
-      "CUSTOM"                  => Set{"start", "process", "collide"},
-      "ACTIVE"                  => Set{"start", "process", "collide"}
+      "TRANSFORM" => Set{"start", "process", "collide"},
+      "VELOCITY"  => Set{"start", "process", "collide"},
+      "CUSTOM"    => Set{"start", "process", "collide"},
+      "ACTIVE"    => Set{"start", "process", "collide"},
     }
 
     # Built-in variables that can only be READ in specific stages
@@ -100,7 +100,7 @@ module CrShader::Validator
       "EYEDIR"         => Set{"sky"},
       "SKY_COORDS"     => Set{"sky"},
       "SDF"            => Set{"fog"},
-      "SDF_NORMAL"     => Set{"fog"}
+      "SDF_NORMAL"     => Set{"fog"},
     }
 
     # Levenshtein distance calculation for fuzzy suggestions
@@ -118,11 +118,11 @@ module CrShader::Validator
         (1..n).each do |j|
           cost = s1[i - 1] == s2[j - 1] ? 0 : 1
           d[i][j] = Math.min(
-            d[i - 1][j] + 1,      # deletion
+            d[i - 1][j] + 1, # deletion
             Math.min(
-              d[i][j - 1] + 1,    # insertion
-              d[i - 1][j - 1] + cost # substitution
-            )
+            d[i][j - 1] + 1,       # insertion
+            d[i - 1][j - 1] + cost # substitution
+          )
           )
         end
       end

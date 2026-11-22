@@ -1,4 +1,5 @@
 require "lapis"
+require "../../../src/crshader/compositor/compositor_effect_base"
 require "../../../src/crshader/editor/variable_array_control"
 require "../../../src/crshader/editor/dynamic_uniform_inspector"
 require "../../../src/crshader/editor/procedural_textures"
@@ -40,7 +41,7 @@ node CrShaderViewerApp < Node3D do
       @param1_name : String = "speed",
       @param2_name : String = "intensity",
       @param3_name : String = "radius",
-      @param4_name : String = "sharpness"
+      @param4_name : String = "sharpness",
     )
     end
   end
@@ -78,6 +79,7 @@ node CrShaderViewerApp < Node3D do
   @param4_label : Godot::Label? = nil
 
   @active_material : Godot::ShaderMaterial? = nil
+  @active_compositor_effect : CrShader::CRShaderCompositorEffect? = nil
   @array_controls_container : Godot::VBoxContainer? = nil
   @dynamic_inspector : CrShader::DynamicUniformInspector? = nil
   @auto_rotate : Bool = true
@@ -306,6 +308,14 @@ node CrShaderViewerApp < Node3D do
 
     # 3. Compositor Passes
     ShaderPreset.new(
+      "Multi-Cue Outline (Depth + Normal)",
+      "res://shaders/compositor_multicue_outline.glsl",
+      PipelineMode::Compositor,
+      "Compositor Passes",
+      "Reverse-Z depth + Forward+ normal crease outline pass with grazing compensation and boiling lines.",
+      "outline_thickness", "depth_threshold", "normal_threshold", "boil_amp"
+    ),
+    ShaderPreset.new(
       "Depth Silhouette Outline",
       "res://shaders/compositor_depth_outline.glsl",
       PipelineMode::Compositor,
@@ -370,6 +380,30 @@ node CrShaderViewerApp < Node3D do
       "Compute Simulation",
       "100,000+ compute particles driven by 3D Curl Noise flow fields with barrier synchronization.",
       "particle_count", "noise_scale", "flow_speed", "delta_time"
+    ),
+    ShaderPreset.new(
+      "Composable Surface VFX (Traits + Features)",
+      "res://shaders/composable_surface_vfx.gdshader",
+      PipelineMode::Material,
+      "Spatial Materials",
+      "Toon surface fusing rim_fresnel, dissolve, wind_sway, and hit_flash traits with Oklab ramps and inspect probes.",
+      "dissolve_amount", "rim_intensity", "flash_amount", "roughness_val"
+    ),
+    ShaderPreset.new(
+      "UI SDF Card & Progress Ring",
+      "res://shaders/ui_sdf_card.gdshader",
+      PipelineMode::ScreenSpace,
+      "2D & Post-Processing",
+      "Aspect-corrected `ui_effect` with `fwidth` anti-aliased 2D SDF rounded card, stroke, glow, and progress ring.",
+      "progress", "corner_radius", "border_width", "glow_strength"
+    ),
+    ShaderPreset.new(
+      "Fused Single-Pass Post Stack",
+      "res://shaders/fused_post_stack.gdshader",
+      PipelineMode::ScreenSpace,
+      "2D & Post-Processing",
+      "Single-pass `screen_effect` fusing chromatic aberration, color grading, vignette, and film grain traits.",
+      "aberration_amount", "grade_saturation", "vignette_intensity", "grain_amount"
     ),
   ]
 
@@ -645,7 +679,7 @@ node CrShaderViewerApp < Node3D do
       light.call("set_rotation_degrees", Vector3.new(-45_f32, 45_f32, 0_f32))
       light.call("set_color", Color.new(1.0_f32, 0.98_f32, 0.95_f32, 1.0_f32))
       light.call("set_param", 2, 1.2_f32) # PARAM_ENERGY
-    when 1 # Cyberpunk Neon
+    when 1                                # Cyberpunk Neon
       light.call("set_rotation_degrees", Vector3.new(-30_f32, -60_f32, 0_f32))
       light.call("set_color", Color.new(0.9_f32, 0.2_f32, 0.8_f32, 1.0_f32))
       light.call("set_param", 2, 1.5_f32)
@@ -711,36 +745,38 @@ node CrShaderViewerApp < Node3D do
     disk_patterns = [
       "examples/shader_viewer/shaders/*.crshader",
       "examples/*.crshader",
-      "shaders/*.crshader"
+      "shaders/*.crshader",
     ]
     disk_patterns.each do |pattern|
       Dir.glob(pattern).each do |p|
         base = File.basename(p, ".crshader")
-        gd_path = "res://shaders/#{base}.gdshader"
-        next if existing_paths.includes?(gd_path)
-
         content = begin
-                    File.read(p)
-                  rescue
-                    ""
-                  end
+          File.read(p)
+        rescue
+          ""
+        end
         next if content.empty?
 
         mode = if content.includes?("shader_type :compute")
                  PipelineMode::Compute
-               elsif content.includes?("SCREEN_UV") || content.includes?("hint_screen_texture")
-                 PipelineMode::ScreenSpace
                elsif content.includes?("compositor_effect")
                  PipelineMode::Compositor
+               elsif content.includes?("SCREEN_UV") || content.includes?("hint_screen_texture")
+                 PipelineMode::ScreenSpace
                else
                  PipelineMode::Material
                end
+
+        ext = (mode == PipelineMode::Compositor || mode == PipelineMode::Compute) ? ".glsl" : ".gdshader"
+        gd_path = "res://shaders/#{base}#{ext}"
+        next if existing_paths.includes?(gd_path)
 
         category = case mode
                    when PipelineMode::Material    then "Spatial Materials"
                    when PipelineMode::ScreenSpace then "Screen Space"
                    when PipelineMode::Compositor  then "Compositor Passes"
                    when PipelineMode::Compute     then "Compute Simulation"
+                   else                                "Spatial Materials"
                    end
 
         name = base.gsub('_', ' ').capitalize
@@ -781,11 +817,11 @@ node CrShaderViewerApp < Node3D do
       sandbox_paths = [
         "res://../shader_sandbox/scenes/sandbox.tscn",
         "res://scenes/sandbox.tscn",
-        "examples/shader_sandbox/scenes/sandbox.tscn"
+        "examples/shader_sandbox/scenes/sandbox.tscn",
       ]
       sandbox_paths.each do |sp|
         begin
-          res = get_tree.call("change_scene_to_file", sp).to_i
+          res = get_tree.call_i64("change_scene_to_file", sp).to_i32
           return if res == 0
         rescue
         end
@@ -840,18 +876,24 @@ node CrShaderViewerApp < Node3D do
 
     case preset.mode
     when PipelineMode::Material
+      clear_compositor_effect
       @pivot.try &.call("set_visible", true)
       @post_process_rect.try &.call("set_visible", false)
       @sprite_2d.try &.call("set_visible", false)
       apply_material_shader(preset.path)
-
-    when PipelineMode::ScreenSpace, PipelineMode::Compositor
+    when PipelineMode::ScreenSpace
+      clear_compositor_effect
       @pivot.try &.call("set_visible", true)
       @post_process_rect.try &.call("set_visible", true)
       @sprite_2d.try &.call("set_visible", false)
       apply_post_process_shader(preset.path)
-
+    when PipelineMode::Compositor
+      @pivot.try &.call("set_visible", true)
+      @post_process_rect.try &.call("set_visible", false)
+      @sprite_2d.try &.call("set_visible", false)
+      apply_compositor_shader(preset.path)
     when PipelineMode::Compute
+      clear_compositor_effect
       @pivot.try &.call("set_visible", false)
       @post_process_rect.try &.call("set_visible", true)
       @sprite_2d.try &.call("set_visible", false)
@@ -877,7 +919,7 @@ node CrShaderViewerApp < Node3D do
 
       found_path = disk_paths.find { |p| File.exists?(p) }
       if found_path
-        inspector.configure_from_source(File.read(found_path), @active_material)
+        inspector.configure_from_source(File.read(found_path), @active_material, @active_compositor_effect)
       else
         inspector.clear_controls
       end
@@ -918,6 +960,50 @@ node CrShaderViewerApp < Node3D do
     Godot.print("[CRShaderViewer] Error applying post-process #{path}: #{ex.message}")
   end
 
+  def clear_compositor_effect : Void
+    if eff = @active_compositor_effect
+      eff.set_enabled(false) rescue nil
+      @active_compositor_effect = nil
+    end
+    if env = @world_env
+      CrShader::CRShaderCompositorEffect.clear_world_environment(env)
+    end
+  rescue
+  end
+
+  def apply_compositor_shader(path : String) : Void
+    clear_compositor_effect
+    @active_material = nil
+    if active_mesh = @mesh_instances[@current_shape]?
+      active_mesh.call("set_surface_override_material", 0, nil)
+    end
+
+    cr_name = path.sub(/\.(gdshader|glsl)$/, ".crshader")
+    disk_paths = [
+      cr_name.sub("res://shaders/", "examples/shader_viewer/shaders/"),
+      cr_name.sub("res://shaders/", "examples/"),
+      cr_name.sub("res://shaders/", "shaders/"),
+    ]
+    found_cr = disk_paths.find { |p| File.exists?(p) }
+
+    eff = Godot.create(CrShader::CRShaderCompositorEffect)
+    return if eff.pointer.null?
+
+    if found_cr
+      eff.load_shader_file(found_cr)
+    else
+      eff.load_shader_file(path)
+    end
+    @active_compositor_effect = eff
+
+    if env = @world_env
+      CrShader::CRShaderCompositorEffect.mount_to_world_environment(env, eff)
+    end
+    Godot.print("[CRShaderViewer] Mounted hardware CompositorEffect pass: #{path}")
+  rescue ex
+    Godot.print("[CRShaderViewer] Error mounting compositor effect #{path}: #{ex.message}")
+  end
+
   def apply_compute_shader_preview(path : String) : Void
     mat = Godot.create(Godot::ShaderMaterial)
     return unless mat
@@ -936,8 +1022,8 @@ node CrShaderViewerApp < Node3D do
 
   def _unhandled_input(event : Godot::InputEvent) : Void
     if event.is_a?(Godot::InputEventMouseButton)
-      btn_idx = event.call("get_button_index").to_i
-      is_pressed = event.call("is_pressed").as_bool
+      btn_idx = event.call_i64("get_button_index").to_i32
+      is_pressed = event.call_bool("is_pressed")
 
       if is_pressed
         if btn_idx == 4 # WHEEL_UP
@@ -948,7 +1034,7 @@ node CrShaderViewerApp < Node3D do
           update_camera_transform
         elsif btn_idx == 1 # MOUSE_BUTTON_LEFT
           @is_dragging = true
-          @drag_start_pos = event.call("get_position").as_v2
+          @drag_start_pos = event.get_position
         end
       else
         if btn_idx == 1
@@ -956,15 +1042,15 @@ node CrShaderViewerApp < Node3D do
         end
       end
     elsif event.is_a?(Godot::InputEventMouseMotion) && @is_dragging
-      pos = event.call("get_position").as_v2
+      pos = event.get_position
       diff = pos - @drag_start_pos
       @drag_start_pos = pos
 
       @cam_rot_y += diff.x * 0.008_f32
       @cam_rot_x = Math.max(-1.4_f32, Math.min(1.4_f32, @cam_rot_x + diff.y * 0.008_f32))
       update_camera_transform
-    elsif event.is_a?(Godot::InputEventKey) && event.call("is_pressed").as_bool
-      key = event.call("get_keycode").to_i
+    elsif event.is_a?(Godot::InputEventKey) && event.call_bool("is_pressed")
+      key = event.call_i64("get_keycode").to_i32
       if key == 32 # KEY_SPACE
         toggle_compare_mode
       elsif key >= 49 && key <= 53 # Keys '1' to '5' for Lighting Presets

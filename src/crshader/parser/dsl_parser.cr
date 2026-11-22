@@ -4,8 +4,13 @@ require "../ast/types"
 require "../macros/macro_engine"
 require "./error_formatter"
 require "./tres_reader"
+require "./gdshaderinc_reader"
+require "../std/registry"
 require "../validator/rules"
 require "../extensions/registry"
+require "../language/gradients_and_curves"
+require "./archetypes"
+require "../composer/trait_fuser"
 
 module CrShader
   class DslParser
@@ -15,27 +20,55 @@ module CrShader
     property current_subgroup : String? = nil
     getter filename : String?
     getter source_lines : Array(String)
+    getter loaded_modules : Set(String)
+    getter force_target : Bool
+    property feature_overrides : Hash(String, FeatureValue)
 
-    def initialize(@filename : String? = nil, default_target : ShaderTarget = ShaderTarget::GDShader)
+    def initialize(
+      @filename : String? = nil,
+      default_target : ShaderTarget = ShaderTarget::GDShader,
+      @loaded_modules : Set(String) = Set(String).new,
+      @force_target : Bool = false,
+      @feature_overrides : Hash(String, FeatureValue) = {} of String => FeatureValue,
+    )
       @program = ShaderProgram.new(default_target)
-      @macro_engine = MacroEngine.new
+      @macro_engine = MacroEngine.new(default_target, @program.shader_type)
       @source_lines = [] of String
+      if fn = @filename
+        if File.exists?(fn)
+          @loaded_modules.add(File.expand_path(fn).gsub('\\', '/'))
+        end
+      end
     end
 
     def parse(source : String) : ShaderProgram
       @source_lines = source.lines
+
+      # Early scan for shader_type / compute / compositor so MacroEngine TARGET & SHADER_TYPE are accurate
+      detect_early_target_and_type(source)
 
       # Extract raw preprocessor directives: #include, #define, #undef, #ifdef, #ifndef, #if, #elif, #else, #endif, #pragma
       source.each_line do |line|
         trimmed = line.strip
         if trimmed =~ /^#(include|define|undef|ifdef|ifndef|if|elif|else|endif|pragma)\b/
           @program.preprocessor_lines << trimmed
+          if m = trimmed.match(/^#include\s+"([^"]+)"/)
+            GdshaderincReader.import_signatures(m[1], @program, @filename)
+          end
         end
+      end
+
+      # Normalize `const NAME : Type =` and `const NAME =` (supports single-line & multiline RHS arrays/expressions!)
+      normalized_source = source.gsub(/(^|\n)([ \t]*)const[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*:[ \t]*([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*=(?!=)/) do |_, m|
+        "#{m[1]}#{m[2]}__const_typed__#{m[4]}__#{m[3]} ="
+      end
+      normalized_source = normalized_source.gsub(/(^|\n)([ \t]*)const[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*=(?!=)/) do |_, m|
+        "#{m[1]}#{m[2]}__const_untyped__#{m[3]} ="
       end
 
       # Normalize uppercase built-in variable assignments to avoid dynamic constant assignment errors
       # and handle compound assignments without requiring prior local definition
-      normalized_source = source.gsub(/\b([A-Z][A-Z0-9_]*)\s*(\+|-|\*|\/|%|&|\||\^|<<|>>)?=(?!=)/) do |match, regex_match|
+      normalized_source = normalized_source.gsub(/\b([A-Z][A-Z0-9_]*)\s*(\+|-|\*|\/|%|&|\||\^|<<|>>)?=(?!=)/) do |match, regex_match|
         name = regex_match[1]
         if op = regex_match[2]?
           "builtin_#{name} = #{name} #{op} "
@@ -83,7 +116,15 @@ module CrShader
         )
       end
 
-      # Macro expansion pass
+      # Pre-load required modules & macros BEFORE macro expansion so imported macros/constants expand!
+      preload_requires(ast)
+      @macro_engine.configure_target(@program.target, @program.shader_type)
+
+      # Pre-scan feature declarations & overrides BEFORE macro / when_feature expansion!
+      prescan_features(ast)
+      apply_orphan_feature_overrides
+
+      # Macro & feature guard expansion pass
       expanded_ast = @macro_engine.expand(ast)
 
       # Process top-level AST nodes
@@ -95,7 +136,14 @@ module CrShader
         process_top_level_node(expanded_ast)
       end
 
+      # Fuse all `use_trait` blocks into stages, uniforms, and varyings
+      TraitFuser.fuse!(@program, @filename, @feature_overrides)
+
       @program
+    end
+
+    def process_hoisted_node(node : Crystal::ASTNode) : Void
+      process_top_level_node(node)
     end
 
     private def process_top_level_node(node : Crystal::ASTNode)
@@ -124,7 +172,7 @@ module CrShader
           val = node_to_string_or_sym(arg)
           if st = ShaderType.from_string?(val)
             @program.shader_type = st
-            if st == ShaderType::Compute
+            if st == ShaderType::Compute && !@force_target
               @program.target = ShaderTarget::GLSL
             end
           else
@@ -141,10 +189,8 @@ module CrShader
             )
           end
         end
-
       when "shader"
         process_shader_block(node)
-
       when "render_mode"
         node.args.each do |arg|
           if arg.is_a?(Crystal::ArrayLiteral)
@@ -155,16 +201,13 @@ module CrShader
             @program.render_modes << node_to_string_or_sym(arg)
           end
         end
-
       when "setup_gdshader"
         @program.setup_gdshader = true
-
       when "require"
         if arg = node.args.first?
           req_str = node_to_string_or_sym(arg)
           handle_require_path(req_str)
         end
-
       when "group", "uniform_group"
         if arg = node.args.first?
           name = node_to_string_or_sym(arg)
@@ -185,7 +228,6 @@ module CrShader
             @current_subgroup = nil
           end
         end
-
       when "subgroup", "uniform_subgroup"
         if arg = node.args.first?
           name = node_to_string_or_sym(arg)
@@ -202,73 +244,67 @@ module CrShader
             @current_subgroup = name
           end
         end
-
       when "generate_node", "node_generator", "export_node"
         type_str = node.args[0]?.try { |a| node_to_string_or_sym(a) } || "mesh3d"
         name_str = node.args[1]?.try { |a| node_to_string_or_sym(a) } || "GeneratedNode"
         out_path = node.args[2]?.try { |a| node_to_string_or_sym(a) }
         @program.node_generations << NodeGenerationTarget.new(type_str, name_str, out_path)
-
       when "uniform", "property", "export"
         process_uniform_call(node, qualifier: UniformQualifier::Default)
-
       when "instance_uniform"
         process_uniform_call(node, qualifier: UniformQualifier::Instance)
-
       when "global_uniform"
         process_uniform_call(node, qualifier: UniformQualifier::Global)
-
       when "sampler"
         process_sampler_call(node)
-
       when "record"
         process_record_call(node)
-
+      when "constant_decl"
+        if node.args.size >= 3
+          cname = node_to_string_or_sym(node.args[0])
+          ctype_node = node.args[1]
+          ctype = ctype_node.is_a?(Crystal::NilLiteral) ? nil : node_to_string_or_sym(ctype_node)
+          cval = node.args[2]
+          if cval.is_a?(Crystal::Expressions) && cval.expressions.size == 1
+            cval = cval.expressions.first
+          end
+          @program.imported_constants.delete(cname)
+          @program.constants.reject! { |c| c.name == cname }
+          @program.constants << ConstantDecl.new(name: cname, value: cval, type_name: ctype)
+          @macro_engine.register_constant(cname, cval)
+        end
       when "stage"
         process_stage_call(node)
-
       when "compositor_effect", "compositor_pass"
         process_compositor_effect_call(node)
-
       when "compute_kernel"
         process_compute_kernel_call(node)
-
       when "storage_buffer"
         process_buffer_call(node)
-
       when "storage_image"
         process_image_call(node)
-
       when "push_constants"
         process_push_constant_call(node)
-
       when "kernel_1d"
         process_kernel_1d_call(node)
-
       when "kernel_2d"
         process_kernel_2d_call(node)
-
       when "particle_simulation", "compute_particles"
         process_particle_simulation_call(node)
-
       when "step_particles"
         process_step_particles_call(node)
-
       when "varying"
         process_varying_call(node)
-
       when "flat_varying"
         process_varying_call(node, forced_qualifier: "flat")
-
       when "smooth_varying"
         process_varying_call(node, forced_qualifier: "smooth")
-
       when "include", "gd_include"
         if arg = node.args.first?
           inc_path = node_to_string_or_sym(arg)
-          @program.includes << inc_path
+          @program.includes << inc_path unless @program.includes.includes?(inc_path)
+          GdshaderincReader.import_signatures(inc_path, @program, @filename)
         end
-
       when "define"
         if arg = node.args.first?
           def_name = node_to_string_or_sym(arg)
@@ -276,13 +312,11 @@ module CrShader
           directive = val_str ? "#define #{def_name} #{val_str}" : "#define #{def_name}"
           @program.preprocessor_lines << directive
         end
-
       when "undefine", "undef"
         if arg = node.args.first?
           def_name = node_to_string_or_sym(arg)
           @program.preprocessor_lines << "#undef #{def_name}"
         end
-
       when "pragma"
         if arg = node.args.first?
           pname = node_to_string_or_sym(arg)
@@ -290,39 +324,54 @@ module CrShader
           directive = pval ? "#pragma #{pname} #{pval}" : "#pragma #{pname}"
           @program.preprocessor_lines << directive
         end
-
       when "default_precision", "precision"
         if node.args.size >= 2
           prec = node_to_string_or_sym(node.args[0])
           typ = node_to_string_or_sym(node.args[1])
           @program.default_precisions[typ] = prec
         end
-
       when "const"
         process_const_call(node)
-
       when "local_size"
         process_local_size_call(node)
-
       when "buffer"
         process_buffer_call(node)
-
       when "push_constant"
         process_push_constant_call(node)
-
       when "shared"
         process_shared_call(node)
-
       when "image2d"
         process_image_call(node)
-
+      when "feature"
+        process_feature_call(node)
+      when "gradient"
+        if gdecl = GradientsAndCurves.parse_gradient_call(node)
+          @program.gradients.reject! { |g| g.name == gdecl.name }
+          @program.gradients << gdecl
+          @program.imported_functions.delete(gdecl.name)
+          @program.functions[gdecl.name] = GradientsAndCurves.synthesize_gradient_def(gdecl)
+        end
+      when "curve"
+        if cdecl = GradientsAndCurves.parse_curve_call(node)
+          @program.curves.reject! { |c| c.name == cdecl.name }
+          @program.curves << cdecl
+          @program.imported_functions.delete(cdecl.name)
+          @program.functions[cdecl.name] = GradientsAndCurves.synthesize_curve_def(cdecl)
+        end
+      when "shader_trait"
+        if tdecl = TraitFuser.parse_trait_decl(node, self)
+          @program.traits[tdecl.name] = tdecl
+        end
+      when "use_trait"
+        process_use_trait_call(node)
+      when "sprite_effect", "screen_effect", "ui_effect", "surface_material"
+        Archetypes.process(node, self)
       when "vertex", "fragment", "light", "start", "process", "collide", "sky", "fog"
         if node.block
           synthesize_stage_def(node)
         else
           @program.raw_top_level_nodes << node
         end
-
       else
         if CrShader::Extensions.handle_directive(node.name, node, self)
           return
@@ -397,9 +446,13 @@ module CrShader
 
     private def process_image_call(node : Crystal::Call)
       name = ""
+      image_type = "image2D"
       format = "rgba32f"
       set = 0
       binding = 0
+      is_writeonly = false
+      is_readonly = false
+      is_restrict = false
 
       if first_arg = node.args.first?
         name = node_to_string_or_sym(first_arg)
@@ -407,14 +460,27 @@ module CrShader
 
       node.named_args.try &.each do |narg|
         case narg.name
-        when "format" then format = node_to_string_or_sym(narg.value)
-        when "set" then set = narg.value.to_s.to_i? || 0
-        when "binding" then binding = narg.value.to_s.to_i? || 0
+        when "type", "image_type" then image_type = node_to_string_or_sym(narg.value)
+        when "format"             then format = node_to_string_or_sym(narg.value)
+        when "set"                then set = narg.value.to_s.to_i? || 0
+        when "binding"            then binding = narg.value.to_s.to_i? || 0
+        when "writeonly"          then is_writeonly = narg.value.to_s == "true"
+        when "readonly"           then is_readonly = narg.value.to_s == "true"
+        when "restrict"           then is_restrict = narg.value.to_s == "true"
         end
       end
 
       return if name.empty?
-      @program.images << ImageUniformDecl.new(name: name, format: format, set: set, binding: binding)
+      @program.images << ImageUniformDecl.new(
+        name: name,
+        image_type: image_type,
+        format: format,
+        set: set,
+        binding: binding,
+        writeonly: is_writeonly,
+        readonly: is_readonly,
+        restrict: is_restrict
+      )
     end
 
     private def process_uniform_call(node : Crystal::Call, qualifier : UniformQualifier = UniformQualifier::Default)
@@ -434,6 +500,8 @@ module CrShader
       is_packed_array = false
       embedded_elements : Array(Crystal::ASTNode)? = nil
       precision : String? = nil
+      explicit_set : Int32? = nil
+      explicit_binding : Int32? = nil
 
       base_dir = @filename ? File.dirname(@filename.not_nil!) : nil
 
@@ -605,6 +673,10 @@ module CrShader
           precision = node_to_string_or_sym(narg.value)
         when "type"
           type_name = TypeInfo.normalize(narg.value.to_s)
+        when "set"
+          explicit_set = narg.value.to_s.to_i?
+        when "binding"
+          explicit_binding = narg.value.to_s.to_i?
         else
           hints << normalize_hint(node_to_hint_string(narg.value))
         end
@@ -617,7 +689,9 @@ module CrShader
       end
 
       type_name = TypeInfo.normalize(type_name)
+      doc_comment = extract_doc_comment(node.location.try(&.line_number))
 
+      @program.uniforms.reject! { |u| u.name == name }
       @program.uniforms << UniformDecl.new(
         name: name,
         type_name: type_name,
@@ -631,7 +705,10 @@ module CrShader
         resource_path: resource_path,
         is_packed_array: is_packed_array,
         embedded_elements: embedded_elements,
-        precision: precision
+        precision: precision,
+        doc_comment: doc_comment,
+        set: explicit_set,
+        binding: explicit_binding
       )
     end
 
@@ -639,9 +716,9 @@ module CrShader
       case elem
       when Crystal::Call
         case elem.name
-        when "vec4" then "Vec4"
-        when "vec3" then "Vec3"
-        when "vec2" then "Vec2"
+        when "vec4"  then "Vec4"
+        when "vec3"  then "Vec3"
+        when "vec2"  then "Vec2"
         when "ivec2" then "IVec2"
         when "ivec3" then "IVec3"
         when "ivec4" then "IVec4"
@@ -759,11 +836,11 @@ module CrShader
       node.named_args.try &.each do |narg|
         case narg.name
         when "as", "instance" then instance_name = node_to_string_or_sym(narg.value)
-        when "set"           then set = narg.value.to_s.to_i? || 0
-        when "binding"       then binding = narg.value.to_s.to_i? || 0
-        when "std"           then std = node_to_string_or_sym(narg.value)
-        when "restrict"      then is_restrict = narg.value.to_s == "true"
-        when "readonly"      then is_readonly = narg.value.to_s == "true"
+        when "set"            then set = narg.value.to_s.to_i? || 0
+        when "binding"        then binding = narg.value.to_s.to_i? || 0
+        when "std"            then std = node_to_string_or_sym(narg.value)
+        when "restrict"       then is_restrict = narg.value.to_s == "true"
+        when "readonly"       then is_readonly = narg.value.to_s == "true"
         end
       end
 
@@ -833,14 +910,27 @@ module CrShader
     end
 
     private def process_def(node : Crystal::Def)
+      @program.imported_functions.delete(node.name)
       @program.functions[node.name] = node
     end
 
     private def process_assign(node : Crystal::Assign)
-      # e.g. PI = 3.14159265
+      # e.g. PI = 3.14159265 or `const NAME : Type = expr` / `const NAME = expr`
       if node.target.is_a?(Crystal::Path) || node.target.is_a?(Crystal::Var)
-        name = node.target.to_s.sub(/^builtin_/, "")
-        @program.constants << ConstantDecl.new(name: name, value: node.value)
+        raw_name = node.target.to_s
+        ctype : String? = nil
+        name = if m = raw_name.match(/^__const_typed__([a-zA-Z_][a-zA-Z0-9_]*)__(.+)$/)
+                 ctype = m[1]
+                 m[2]
+               elsif raw_name.starts_with?("__const_untyped__")
+                 raw_name.sub(/^__const_untyped__/, "")
+               else
+                 raw_name.sub(/^builtin_/, "")
+               end
+        @program.imported_constants.delete(name)
+        @program.constants.reject! { |c| c.name == name }
+        @program.constants << ConstantDecl.new(name: name, value: node.value, type_name: ctype)
+        @macro_engine.register_constant(name, node.value)
       else
         @program.raw_top_level_nodes << node
       end
@@ -859,31 +949,366 @@ module CrShader
           fields << StructField.new(body.var.to_s, body.declared_type.to_s)
         end
       end
-      @program.structs[node.name.to_s] = StructDecl.new(node.name.to_s, fields)
+      sname = node.name.to_s
+      @program.imported_structs.delete(sname)
+      @program.structs[sname] = StructDecl.new(sname, fields)
     end
 
     private def process_require(node : Crystal::Require)
       handle_require_path(node.string)
     end
 
-    private def handle_require_path(req_str : String)
-      if req_str.starts_with?("./") || req_str.starts_with?("../")
-        base_dir = @filename ? File.dirname(@filename.not_nil!) : "."
-        resolved_path = File.expand_path(req_str, base_dir)
-        candidate = File.exists?(resolved_path) ? resolved_path : "#{resolved_path}.crshader"
-        if File.exists?(candidate)
-          sub_parser = DslParser.new(filename: candidate, default_target: @program.target)
-          sub_program = sub_parser.parse(File.read(candidate))
-          sub_program.functions.each { |k, v| @program.functions[k] = v }
-          sub_program.structs.each { |k, v| @program.structs[k] = v }
-          @program.constants.concat(sub_program.constants)
-          @program.buffers.concat(sub_program.buffers)
-          @program.push_constants.concat(sub_program.push_constants)
-          sub_program.requires.each { |r| @program.requires.add(r) }
-          return
+    private def detect_early_target_and_type(source : String) : Void
+      unconditional = source.gsub(/\{%\s*if\b.*?\{%\s*end\s*%\}/m, "")
+      if m = unconditional.match(/\bshader(?:_type)?\s*\(?\s*:?([a-z_0-9]+)/i)
+        if st = ShaderType.from_string?(m[1])
+          @program.shader_type = st
+          if st == ShaderType::Compute && !@force_target
+            @program.target = ShaderTarget::GLSL
+          end
+        end
+      elsif unconditional =~ /\b(compositor_effect|compositor_pass|compute_kernel|particle_simulation|compute_particles)\b/
+        @program.shader_type = ShaderType::Compute
+        @program.target = ShaderTarget::GLSL unless @force_target
+      elsif unconditional =~ /\b(sprite_effect|ui_effect)\b/
+        @program.shader_type = ShaderType::CanvasItem
+      elsif unconditional =~ /\bsurface_material\b/
+        @program.shader_type = ShaderType::Spatial
+      elsif unconditional =~ /\bscreen_effect\b/
+        if unconditional =~ /\bscreen_effect[^\n]*?(?:mode\s*:\s*:?spatial|depth\s*:\s*true)/
+          @program.shader_type = ShaderType::Spatial
+        else
+          @program.shader_type = ShaderType::CanvasItem
         end
       end
+      @macro_engine.configure_target(@program.target, @program.shader_type)
+    end
+
+    private def preload_requires(node : Crystal::ASTNode) : Void
+      case node
+      when Crystal::Expressions
+        node.expressions.each { |child| preload_requires(child) }
+      when Crystal::Require
+        handle_require_path(node.string)
+      when Crystal::Call
+        if node.name == "require" && (arg = node.args.first?)
+          handle_require_path(node_to_string_or_sym(arg))
+        elsif (blk = node.block) && ["shader", "group", "uniform_group", "compositor_effect", "compositor_pass", "sprite_effect", "screen_effect", "ui_effect", "surface_material"].includes?(node.name)
+          preload_requires(blk.body)
+        end
+      end
+    end
+
+    private def prescan_features(node : Crystal::ASTNode) : Void
+      case node
+      when Crystal::Expressions
+        node.expressions.each { |child| prescan_features(child) }
+      when Crystal::Call
+        if node.name == "feature" && node.obj.nil?
+          register_feature_from_call(node)
+        elsif (blk = node.block)
+          prescan_features(blk.body)
+        end
+      end
+    end
+
+    private def apply_orphan_feature_overrides : Void
+      @feature_overrides.each do |fname, fval|
+        next if @program.features.any? { |f| f.name == fname }
+        ast_val = feature_value_to_ast(fval)
+        @macro_engine.register_feature(fname, ast_val)
+      end
+    end
+
+    private def process_feature_call(node : Crystal::Call) : Void
+      register_feature_from_call(node)
+    end
+
+    private def register_feature_from_call(node : Crystal::Call) : Void
+      return if node.args.empty?
+      fname = node_to_string_or_sym(node.args[0]).strip
+      return if fname.empty?
+
+      options = [] of String
+      default_node : Crystal::ASTNode? = node.args[1]?
+
+      node.named_args.try &.each do |narg|
+        case narg.name
+        when "default"
+          default_node = narg.value
+        when "options", "values"
+          if narg.value.is_a?(Crystal::ArrayLiteral)
+            narg.value.as(Crystal::ArrayLiteral).elements.each do |el|
+              options << node_to_string_or_sym(el)
+            end
+          end
+        end
+      end
+
+      kind, def_str = if !options.empty?
+                        d = default_node ? node_to_string_or_sym(default_node) : options.first
+                        {FeatureKind::Enum, d}
+                      elsif default_node.is_a?(Crystal::NumberLiteral)
+                        {FeatureKind::Int, default_node.as(Crystal::NumberLiteral).value}
+                      elsif default_node.is_a?(Crystal::BoolLiteral)
+                        {FeatureKind::Bool, default_node.as(Crystal::BoolLiteral).value ? "true" : "false"}
+                      elsif default_node
+                        s = node_to_string_or_sym(default_node)
+                        if s == "true" || s == "false"
+                          {FeatureKind::Bool, s}
+                        elsif s.to_i?
+                          {FeatureKind::Int, s}
+                        else
+                          {FeatureKind::Enum, s}
+                        end
+                      else
+                        {FeatureKind::Bool, "true"}
+                      end
+
+      active_str = if @feature_overrides.has_key?(fname)
+                     VariantCache.normalize_feature_val(@feature_overrides[fname])
+                   else
+                     def_str
+                   end
+
+      doc = extract_doc_comment(node.location.try(&.line_number))
+      fdecl = FeatureDecl.new(
+        name: fname,
+        kind: kind,
+        default_value: def_str,
+        active_value: active_str,
+        options: options,
+        doc_comment: doc
+      )
+
+      @program.features.reject! { |f| f.name == fname }
+      @program.features << fdecl
+
+      ast_node = case kind
+                 when FeatureKind::Bool
+                   Crystal::BoolLiteral.new(active_str == "true" || active_str == "1")
+                 when FeatureKind::Int
+                   Crystal::NumberLiteral.new(active_str.to_i? || 0)
+                 else
+                   Crystal::StringLiteral.new(active_str)
+                 end
+
+      @macro_engine.register_feature(fname, ast_node)
+
+      # Also expose Bool / Int features as imported compile-time constants so runtime expressions can read `FEATURE_<NAME>`
+      case kind
+      when FeatureKind::Bool
+        @program.constants.reject! { |c| c.name == fdecl.macro_name }
+        @program.constants << ConstantDecl.new(fdecl.macro_name, ast_node, "Bool")
+        @program.imported_constants.add(fdecl.macro_name)
+      when FeatureKind::Int
+        @program.constants.reject! { |c| c.name == fdecl.macro_name }
+        @program.constants << ConstantDecl.new(fdecl.macro_name, ast_node, "Int32")
+        @program.imported_constants.add(fdecl.macro_name)
+      end
+    end
+
+    private def feature_value_to_ast(val : FeatureValue) : Crystal::ASTNode
+      case val
+      when Bool   then Crystal::BoolLiteral.new(val)
+      when Int32  then Crystal::NumberLiteral.new(val)
+      when Symbol then Crystal::StringLiteral.new(val.to_s)
+      when String
+        if val == "true" || val == "false"
+          Crystal::BoolLiteral.new(val == "true")
+        elsif iv = val.to_i?
+          Crystal::NumberLiteral.new(iv)
+        else
+          Crystal::StringLiteral.new(val)
+        end
+      else
+        Crystal::StringLiteral.new(val.to_s)
+      end
+    end
+
+    private def process_use_trait_call(node : Crystal::Call) : Void
+      return if node.args.empty?
+      target_str = node_to_string_or_sym(node.args[0])
+      prefix : String? = nil
+      node.named_args.try &.each do |narg|
+        if narg.name == "prefix" || narg.name == "as"
+          prefix = node_to_string_or_sym(narg.value)
+        end
+      end
+      @program.trait_uses << TraitUse.new(target_str, prefix)
+    end
+
+    def self.resolve_crshader_file(req_str : String, filename : String?) : String?
+      base_dir = filename ? File.dirname(filename) : "."
+      candidates = [] of String
+
+      if req_str.starts_with?("res://")
+        clean = req_str.sub(%r{^res://}, "").gsub('\\', '/')
+        curr = File.expand_path(base_dir)
+        5.times do
+          if File.exists?(File.join(curr, "project.godot"))
+            candidates << File.join(curr, clean)
+            candidates << "#{File.join(curr, clean)}.crshader"
+            break
+          end
+          parent = File.dirname(curr)
+          break if parent == curr
+          curr = parent
+        end
+        candidates << clean
+        candidates << "#{clean}.crshader"
+      elsif req_str.starts_with?("./") || req_str.starts_with?("../") || req_str.ends_with?(".crshader")
+        resolved = File.expand_path(req_str, base_dir)
+        candidates << resolved
+        candidates << "#{resolved}.crshader" unless resolved.ends_with?(".crshader")
+      end
+
+      candidates.find { |c| File.exists?(c) && File.file?(c) }
+    end
+
+    private def resolve_crshader_path(req_str : String) : String?
+      self.class.resolve_crshader_file(req_str, @filename)
+    end
+
+    private def merge_imported_program(sub_parser : DslParser, include_uniforms : Bool = true) : Void
+      sub_program = sub_parser.program
+
+      # Merge macros, features & compile-time constants into MacroEngine
+      sub_parser.macro_engine.macros.each { |k, m| @macro_engine.macros[k] = m }
+      sub_parser.macro_engine.features.each { |k, fv| @macro_engine.register_feature(k, fv) }
+      sub_program.constants.each { |c| @macro_engine.register_constant(c.name, c.value) }
+      sub_program.features.each do |f|
+        unless @program.features.any? { |ef| ef.name == f.name }
+          @program.features << f
+        end
+      end
+      sub_program.traits.each do |tname, tdecl|
+        @program.traits[tname] ||= tdecl
+      end
+      sub_program.gradients.each do |g|
+        unless @program.gradients.any? { |eg| eg.name == g.name }
+          @program.gradients << g
+        end
+      end
+      sub_program.curves.each do |cv|
+        unless @program.curves.any? { |ec| ec.name == cv.name }
+          @program.curves << cv
+        end
+      end
+
+      # Merge structs, constants, and functions (marked as imported for TreeShaker)
+      sub_program.structs.each do |k, v|
+        unless @program.structs.has_key?(k)
+          @program.structs[k] = v
+          @program.imported_structs.add(k)
+        end
+      end
+
+      sub_program.constants.each do |c|
+        unless @program.constants.any? { |existing| existing.name == c.name }
+          @program.constants << c
+          @program.imported_constants.add(c.name)
+        end
+      end
+
+      sub_program.functions.each do |k, v|
+        unless @program.functions.has_key?(k)
+          @program.functions[k] = v
+          @program.imported_functions.add(k)
+        end
+      end
+
+      if include_uniforms
+        sub_program.uniforms.each do |u|
+          unless @program.uniforms.any? { |existing| existing.name == u.name }
+            @program.uniforms << u
+          end
+        end
+        sub_program.varyings.each do |v|
+          unless @program.varyings.any? { |existing| existing.name == v.name }
+            @program.varyings << v
+          end
+        end
+        sub_program.buffers.each do |b|
+          unless @program.buffers.any? { |existing| existing.name == b.name }
+            @program.buffers << b
+          end
+        end
+        sub_program.push_constants.each do |pc|
+          unless @program.push_constants.any? { |existing| existing.name == pc.name }
+            @program.push_constants << pc
+          end
+        end
+        sub_program.includes.each do |inc|
+          @program.includes << inc unless @program.includes.includes?(inc)
+        end
+      end
+
+      sub_program.external_structs.each { |k, v| @program.external_structs[k] = v }
+      sub_program.external_functions.each { |k, v| @program.external_functions[k] = v }
+      sub_program.external_constants.each { |k, v| @program.external_constants[k] = v }
+      sub_program.requires.each { |r| @program.requires.add(r) }
+    end
+
+    private def handle_require_path(req_str : String)
+      if Std.has_module?(req_str)
+        clean_std = req_str.sub(/^std\//, "")
+        mod_key = "std:#{clean_std}"
+        @program.requires.add(req_str)
+        if @loaded_modules.add?(mod_key)
+          if std_src = Std.module_source(clean_std)
+            sub_parser = DslParser.new(
+              filename: "<std/#{clean_std}>",
+              default_target: @program.target,
+              loaded_modules: @loaded_modules,
+              force_target: true,
+              feature_overrides: @feature_overrides
+            )
+            sub_parser.parse(std_src)
+            merge_imported_program(sub_parser, include_uniforms: true)
+          end
+        end
+        return
+      end
+
+      if candidate = resolve_crshader_path(req_str)
+        canon = File.expand_path(candidate).gsub('\\', '/')
+        if @loaded_modules.add?(canon)
+          sub_parser = DslParser.new(
+            filename: candidate,
+            default_target: @program.target,
+            loaded_modules: @loaded_modules,
+            force_target: true,
+            feature_overrides: @feature_overrides
+          )
+          sub_parser.parse(File.read(candidate))
+          merge_imported_program(sub_parser, include_uniforms: true)
+        end
+        return
+      end
+
       @program.requires.add(req_str)
+    end
+
+    private def extract_doc_comment(line_number : Int32?) : String?
+      return nil unless line_number && line_number > 1
+      idx = line_number - 2
+      collected = [] of String
+      while idx >= 0
+        line = @source_lines[idx]?.try(&.strip) || ""
+        if line.starts_with?("#")
+          break if line =~ /^#(include|define|undef|ifdef|ifndef|if|elif|else|endif|pragma)\b/
+          clean_comment = line.sub(/^#+\s?/, "").strip
+          # Skip pure decorative divider bars like # ==== or # ----
+          if clean_comment !~ /^[=\-*_]{4,}$/ && !clean_comment.empty?
+            collected.unshift(clean_comment)
+          end
+          idx -= 1
+        else
+          break
+        end
+      end
+      collected.empty? ? nil : collected.join(" ")
     end
 
     private def node_to_string_or_sym(node : Crystal::ASTNode) : String
@@ -909,7 +1334,11 @@ module CrShader
         hname = node.name
         hname = "hint_range" if hname == "range"
         hname = "hint_enum" if hname == "enum"
-        args_str = node.args.map { |a| node_to_string_or_sym(a) }.join(", ")
+        args_str = if hname == "hint_enum"
+                     node.args.map { |a| "\"#{node_to_string_or_sym(a)}\"" }.join(", ")
+                   else
+                     node.args.map { |a| node_to_string_or_sym(a) }.join(", ")
+                   end
         "#{hname}(#{args_str})"
       else
         node.to_s
@@ -931,6 +1360,7 @@ module CrShader
         raw_hint
       end
     end
+
     private def parse_hex_color_to_ast(call : Crystal::Call) : Crystal::ASTNode?
       return nil unless (call.name == "hex" || call.name == "from_hex")
       arg = call.args.first?
@@ -939,7 +1369,7 @@ module CrShader
       hex_str = case arg
                 when Crystal::StringLiteral then arg.value.strip
                 when Crystal::NumberLiteral then arg.value.sub(/^0x/i, "")
-                else return nil
+                else                             return nil
                 end
 
       clean_hex = hex_str.sub(/^#/, "")
@@ -965,6 +1395,8 @@ module CrShader
       return unless (first_arg = node.args.first?)
       name = node_to_string_or_sym(first_arg)
       hints = [] of String
+      explicit_set : Int32? = nil
+      explicit_binding : Int32? = nil
 
       node.named_args.try &.each do |narg|
         case narg.name
@@ -972,15 +1404,24 @@ module CrShader
           hints << "#{narg.name}_#{node_to_string_or_sym(narg.value)}"
         when "hint"
           hints << normalize_hint(node_to_hint_string(narg.value))
+        when "set"
+          explicit_set = narg.value.to_s.to_i?
+        when "binding"
+          explicit_binding = narg.value.to_s.to_i?
         end
       end
 
+      doc_comment = extract_doc_comment(node.location.try(&.line_number))
+      @program.uniforms.reject! { |u| u.name == name }
       @program.uniforms << UniformDecl.new(
         name: name,
         type_name: "Sampler2D",
         hints: hints,
         group: @current_group,
-        subgroup: @current_subgroup
+        subgroup: @current_subgroup,
+        doc_comment: doc_comment,
+        set: explicit_set,
+        binding: explicit_binding
       )
     end
 
@@ -1000,6 +1441,7 @@ module CrShader
         f_type = TypeInfo.normalize(narg.value.to_s)
         fields << StructField.new(f_name, f_type)
       end
+      @program.imported_structs.delete(struct_name)
       @program.structs[struct_name] = StructDecl.new(struct_name, fields)
     end
 
@@ -1018,10 +1460,10 @@ module CrShader
       stage_name = node.args.first?.try { |a| node_to_string_or_sym(a) } || "post_transparent"
       @program.compositor_stage = case stage_name.downcase
                                   when "post_transparent" then "PostTransparent"
-                                  when "post_opaque" then "PostOpaque"
-                                  when "pre_opaque" then "PreOpaque"
-                                  when "post_sky" then "PostSky"
-                                  else "PostTransparent"
+                                  when "post_opaque"      then "PostOpaque"
+                                  when "pre_opaque"       then "PreOpaque"
+                                  when "post_sky"         then "PostSky"
+                                  else                         "PostTransparent"
                                   end
 
       if block = node.block
@@ -1041,8 +1483,16 @@ module CrShader
         when "access"
           node.args.each do |arg|
             sym = node_to_string_or_sym(arg).downcase
-            @program.compositor_access_color = true if sym == "color"
-            @program.compositor_access_depth = true if sym == "depth"
+            case sym
+            when "color"
+              @program.compositor_access_color = true
+            when "depth", "depth_texture"
+              @program.compositor_access_depth = true
+            when "normal_roughness", "normal", "normals"
+              @program.compositor_access_normal_roughness = true
+            when "scene_data", "matrices", "camera"
+              @program.compositor_access_scene_data = true
+            end
           end
         when "process_pixel"
           process_pixel_block(node)
@@ -1059,18 +1509,42 @@ module CrShader
 
       has_color = @program.images.any? { |img| img.name == "color_image" }
       unless has_color
-        @program.images << ImageUniformDecl.new("color_image", "image2D", "rgba32f", set: 0, binding: 0)
+        @program.images << ImageUniformDecl.new("color_image", "image2D", "rgba16f", set: 0, binding: 0)
       end
 
       if @program.compositor_access_depth
-        has_depth = @program.images.any? { |img| img.name == "depth_image" }
+        has_depth = @program.uniforms.any? { |u| u.name == "depth_texture" } || @program.images.any? { |img| img.name == "depth_image" }
         unless has_depth
-          @program.images << ImageUniformDecl.new("depth_image", "image2D", "r32f", set: 0, binding: 1)
+          @program.uniforms << UniformDecl.new(
+            name: "depth_texture",
+            type_name: "Sampler2D",
+            set: 0,
+            binding: 1
+          )
+        end
+      end
+
+      if @program.compositor_access_normal_roughness
+        has_nr = @program.uniforms.any? { |u| u.name == "normal_roughness_texture" }
+        unless has_nr
+          @program.uniforms << UniformDecl.new(
+            name: "normal_roughness_texture",
+            type_name: "Sampler2D",
+            set: 0,
+            binding: 2
+          )
         end
       end
 
       coord_var = block.args[0]?.try(&.name) || "coord"
-      color_var = block.args[1]?.try(&.name) || "color"
+      has_uv_arg = block.args.size >= 3
+      uv_var = has_uv_arg ? block.args[1].name : "__uv"
+      color_var = has_uv_arg ? block.args[2].name : (block.args[1]?.try(&.name) || "color")
+
+      @program.coord_stage_var = coord_var
+      @program.pixel_stage_vars = {uv_var, color_var}
+      needs_uv = has_uv_arg || !@program.trait_uses.empty?
+      uv_line = needs_uv ? "#{uv_var} = (vec2(float(#{coord_var}.x), float(#{coord_var}.y)) + vec2(0.5, 0.5)) / vec2(float(size.x), float(size.y))" : ""
 
       main_code = <<-CR
         def main
@@ -1079,6 +1553,7 @@ module CrShader
           if #{coord_var}.x >= size.x || #{coord_var}.y >= size.y
             return
           end
+          #{uv_line}
           #{color_var} = imageLoad(color_image, #{coord_var})
         end
       CR
@@ -1098,7 +1573,7 @@ module CrShader
         [
           Crystal::Var.new("color_image").as(Crystal::ASTNode),
           Crystal::Var.new(coord_var).as(Crystal::ASTNode),
-          Crystal::Var.new(color_var).as(Crystal::ASTNode)
+          Crystal::Var.new(color_var).as(Crystal::ASTNode),
         ]
       )
       main_body_exprs << store_call

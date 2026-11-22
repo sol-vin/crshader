@@ -352,6 +352,112 @@ end
 CRShader = CrShader
 Language = CrShader::Language
 HEADER
+        io.puts <<-INNOVATION_STUBS
+
+module CrShader
+  module Language
+    module PreProcessors
+      def feature(name : Symbol | String, **options) : Nil; end
+      def when_feature(name : Symbol | String, expected = true, &block) : Nil; end
+      def unless_feature(name : Symbol | String, expected = true, &block) : Nil; end
+      def shader_trait(name : Symbol | String, &block) : Nil; end
+      def use_trait(path : Symbol | String, prefix : Symbol | String? = nil) : Nil; end
+      def gradient(name : Symbol | String, stops, space : Symbol = :oklab, interp : Symbol = :linear) : Nil; end
+      def curve(name : Symbol | String, points, interp : Symbol = :smooth) : Nil; end
+    end
+
+    module Stages
+      def sprite_effect(**options, &block : Types::Vec2, Types::Vec4 -> Types::Vec4) : Nil; end
+      def screen_effect(mode : Symbol = :canvas, depth : Bool = false, &block : Types::Vec2, Types::Vec4 -> Types::Vec4) : Nil; end
+      def ui_effect(**options, &block : Types::Vec2, Types::Vec2, Types::Vec4 -> Types::Vec4) : Nil; end
+      def surface_material(preset : Symbol = :pbr, &block) : Nil; end
+      def on_vertex(&block) : Nil; end
+      def on_fragment(&block) : Nil; end
+      def on_light(&block) : Nil; end
+      def on_pixel(&block : Types::Vec2, Types::Vec4 ->) : Nil; end
+    end
+
+    module Types
+      struct Vec2
+        def tile(scale : Float32 | Vec2) : Vec2; self; end
+        def tile(sx : Float32, sy : Float32) : Vec2; self; end
+        def scroll(vx : Float32, vy : Float32, t : Float32 = 0.0_f32) : Vec2; self; end
+        def offset(dx : Float32, dy : Float32) : Vec2; self; end
+        def rotate(angle : Float32, pivot : Vec2 = Vec2.new(0.5_f32, 0.5_f32)) : Vec2; self; end
+        def pixelate(steps : Float32) : Vec2; self; end
+        def polar(center : Vec2 = Vec2.new(0.5_f32, 0.5_f32)) : Vec2; self; end
+        def wave(freq : Float32, amp : Float32, phase : Float32 = 0.0_f32) : Vec2; self; end
+        def posterize(steps : Float32) : Vec2; self; end
+        def one_minus : Vec2; self; end
+      end
+
+      struct Vec3
+        def blend(mode : Symbol, top : Vec3 | Vec4, opacity : Float32 = 1.0_f32) : Vec3; self; end
+        def luminance : Float32; 0.0_f32; end
+        def posterize(steps : Float32) : Vec3; self; end
+        def contrast(c : Float32) : Vec3; self; end
+        def saturate_color(s : Float32) : Vec3; self; end
+        def hue_shift(amount : Float32) : Vec3; self; end
+        def one_minus : Vec3; self; end
+      end
+
+      struct Vec4
+        def blend(mode : Symbol, top : Vec4 | Vec3, opacity : Float32 = 1.0_f32) : Vec4; self; end
+        def luminance : Float32; 0.0_f32; end
+        def posterize(steps : Float32) : Vec4; self; end
+        def contrast(c : Float32) : Vec4; self; end
+        def saturate_color(s : Float32) : Vec4; self; end
+        def hue_shift(amount : Float32) : Vec4; self; end
+        def one_minus : Vec4; self; end
+      end
+    end
+
+    module Functions
+      def inspect(val : T) : T forall T; val; end
+      def inspect(label : Symbol | String, val : T) : T forall T; val; end
+      def blend_multiply(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_screen(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_overlay(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_soft_light(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_hard_light(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_color_dodge(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_color_burn(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_difference(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def blend_exclusion(base : Types::Vec3, top : Types::Vec3) : Types::Vec3; base; end
+      def ease_in_quad(t : Float32) : Float32; t; end
+      def ease_out_quad(t : Float32) : Float32; t; end
+      def ease_in_out_quad(t : Float32) : Float32; t; end
+      def ease_in_cubic(t : Float32) : Float32; t; end
+      def ease_out_cubic(t : Float32) : Float32; t; end
+      def ease_in_out_cubic(t : Float32) : Float32; t; end
+      def ease_out_back(t : Float32) : Float32; t; end
+      def ease_out_elastic(t : Float32) : Float32; t; end
+      def ease_out_bounce(t : Float32) : Float32; t; end
+      def osc_sine(time : Float32, freq : Float32) : Float32; 0.0_f32; end
+      def osc_triangle(time : Float32, freq : Float32) : Float32; 0.0_f32; end
+      def osc_sawtooth(time : Float32, freq : Float32) : Float32; 0.0_f32; end
+      def osc_pulse(time : Float32, freq : Float32, duty : Float32) : Float32; 0.0_f32; end
+      def ping_pong(val : Float32, len : Float32) : Float32; 0.0_f32; end
+      def uv_rotate(uv : Types::Vec2, angle : Float32, pivot : Types::Vec2) : Types::Vec2; uv; end
+      def uv_polar(uv : Types::Vec2, center : Types::Vec2) : Types::Vec2; uv; end
+      def uv_pixelate(uv : Types::Vec2, steps : Float32) : Types::Vec2; uv; end
+      def uv_wave(uv : Types::Vec2, freq : Float32, amp : Float32, phase : Float32) : Types::Vec2; uv; end
+      def uv_aspect_correct(uv : Types::Vec2, aspect : Float32) : Types::Vec2; uv; end
+      def uv_parallax(uv : Types::Vec2, view_dir : Types::Vec3, height : Float32, scale : Float32) : Types::Vec2; uv; end
+      def triplanar_sample(tex : Types::Sampler2D, world_pos : Types::Vec3, world_normal : Types::Vec3, scale : Float32, sharpness : Float32) : Types::Vec4; Types::Vec4.new; end
+      def sdf2d_circle(p : Types::Vec2, radius : Float32) : Float32; 0.0_f32; end
+      def sdf2d_box(p : Types::Vec2, half_size : Types::Vec2) : Float32; 0.0_f32; end
+      def sdf2d_rounded_box(p : Types::Vec2, half_size : Types::Vec2, radius : Float32) : Float32; 0.0_f32; end
+      def sdf2d_ring(p : Types::Vec2, radius : Float32, thickness : Float32) : Float32; 0.0_f32; end
+      def sdf2d_segment(p : Types::Vec2, a : Types::Vec2, b : Types::Vec2) : Float32; 0.0_f32; end
+      def sdf2d_star(p : Types::Vec2, radius : Float32, points : Float32, inner_ratio : Float32) : Float32; 0.0_f32; end
+      def sdf_fill(d : Float32) : Float32; 0.0_f32; end
+      def sdf_stroke(d : Float32, width : Float32) : Float32; 0.0_f32; end
+      def sdf_glow(d : Float32, radius : Float32, falloff : Float32) : Float32; 0.0_f32; end
+    end
+  end
+end
+INNOVATION_STUBS
       end
     end
 

@@ -7,6 +7,7 @@ const mat3 DEUTERANOPIA_MAT = mat3(vec3(0.625, 0.375, 0.0), vec3(0.70, 0.30, 0.0
 const mat3 TRITANOPIA_MAT = mat3(vec3(0.95, 0.05, 0.0), vec3(0.0, 0.433, 0.567), vec3(0.0, 0.475, 0.525));
 
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear;
+/** 0 = Normal, 1 = Protanopia (Red-Blind), 2 = Deuteranopia (Green-Blind), 3 = Tritanopia (Blue-Blind), 4 = Achromatopsia (Monochrome) */
 uniform int mode : hint_range(0, 4) = 1;
 uniform float severity : hint_range(0.0, 1.0) = 1.0;
 

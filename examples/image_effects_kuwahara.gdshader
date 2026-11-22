@@ -7,7 +7,7 @@ uniform int radius : hint_range(1, 6) = 3;
 
 void fragment() {
 	vec2 uv = UV;
-	float tex_size = textureSize(screen_texture, 0);
+	ivec2 tex_size = textureSize(screen_texture, 0);
 	vec2 step_size = (vec2(1.0) / vec2(float(tex_size.x), float(tex_size.y)));
 	vec3 m0 = vec3(0.0);
 	vec3 m1 = vec3(0.0);

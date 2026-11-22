@@ -11,7 +11,7 @@ module CrShader
     # and expose properties to the Godot Inspector.
     #
     # ### Basic Example
-    # ```crystal
+    # ```
     # shader_type :canvas_item
     # render_mode :unshaded, :blend_mix
     #
@@ -25,6 +25,7 @@ module CrShader
     # ```
     module PreProcessors
       extend self
+
       # **Shader Target**: Specifies the operating mode of the shader pipeline.
       #
       # Godot divides shaders into distinct operational categories. Setting `shader_type`
@@ -74,7 +75,7 @@ module CrShader
       # </table>
       #
       # #### Example:
-      # ```crystal
+      # ```
       # shader_type :spatial
       # ```
       def shader_type(mode : Symbol) : Nil
@@ -132,7 +133,7 @@ module CrShader
       # </table>
       #
       # #### Example:
-      # ```crystal
+      # ```
       # render_mode :unshaded, :cull_disabled, :depth_draw_always
       # ```
       def render_mode(*modes : Symbol) : Nil
@@ -154,7 +155,7 @@ module CrShader
       # - `z`: Number of invocations in the Z dimension (default: 1).
       #
       # #### Example:
-      # ```crystal
+      # ```
       # shader_type :compute
       # local_size 16, 16, 1
       # ```
@@ -190,7 +191,7 @@ module CrShader
       # </table>
       #
       # #### Examples:
-      # ```crystal
+      # ```
       # uniform albedo : Color = Color.new(1.0, 0.5, 0.2, 1.0), hint: :source_color
       # uniform wave_speed : Float32 = 2.5, hint: hint_range(0.0, 10.0, 0.1)
       # uniform roughness : Float32 = 0.5, hint: hint_range(0.0, 1.0)
@@ -208,7 +209,7 @@ module CrShader
       # Transpiled to Godot's <code>instance uniform ...</code>.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # instance_uniform custom_tint : Color = Color.new(1.0, 1.0, 1.0, 1.0), hint: :source_color
       # instance_uniform instance_offset : Vec3 = vec3(0.0, 0.0, 0.0)
       # ```
@@ -223,7 +224,7 @@ module CrShader
       # Transpiled to Godot's <code>global uniform ...</code>.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # global_uniform global_wind_dir : Vec3
       # global_uniform global_water_level : Float32
       # ```
@@ -240,7 +241,7 @@ module CrShader
       # - `:flat`: No interpolation; uses the value from the primitive's first vertex.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # varying v_world_pos : Vec3
       # varying v_normal : Vec3, qualifier: :smooth
       # varying v_tile_id : Int32, qualifier: :flat
@@ -262,7 +263,7 @@ module CrShader
       # Evaluated and emitted as a `const` expression in the target shader.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # const PI = 3.14159265359_f32
       # const MAX_LIGHTS = 8
       # ```
@@ -285,7 +286,7 @@ module CrShader
       # - `readonly`: Marks the buffer as read-only for hardware caching optimizations.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # buffer ParticleBuffer, set: 0, binding: 0, std: "std430" do
       #   particles : ParticleData[]
       # end
@@ -298,7 +299,7 @@ module CrShader
       # Push constants are stored directly in GPU command registers for maximum transmission speed.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # push_constant FrameUniforms do
       #   delta_time : Float32
       #   screen_size : Vec2
@@ -312,7 +313,7 @@ module CrShader
       # Accessible to all invocations in the current local workgroup. Much faster than VRAM.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # shared tile_cache : UInt32[256]
       # ```
       macro shared(declaration)
@@ -328,7 +329,7 @@ module CrShader
       # - `binding`: Vulkan descriptor binding index (default: 0).
       #
       # #### Example:
-      # ```crystal
+      # ```
       # image2d input_tex, format: :rgba32f, set: 0, binding: 0
       # image2d output_tex, format: :rgba32f, set: 0, binding: 1
       # ```
@@ -338,7 +339,7 @@ module CrShader
       # **Inspector Group**: Groups subsequent uniforms under a categorized accordion section.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # group "Water Dynamics"
       # uniform wave_height : Float32 = 0.5
       # uniform wave_speed : Float32 = 1.0
@@ -349,7 +350,7 @@ module CrShader
       # **Inspector Subgroup**: Groups subsequent uniforms under an inspector subsection.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # subgroup "Foam Parameters"
       # uniform foam_color : Color = Color.new(1.0, 1.0, 1.0, 1.0)
       # uniform foam_threshold : Float32 = 0.8
@@ -380,7 +381,7 @@ module CrShader
       # </table>
       #
       # #### Example:
-      # ```crystal
+      # ```
       # require "std/noise"
       # require "std/lighting"
       # ```

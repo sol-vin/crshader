@@ -11,7 +11,7 @@ module CrShader
     # block DSL syntax (`fragment do ... end`).
     #
     # ### Basic Example
-    # ```crystal
+    # ```
     # shader_type :spatial
     #
     # def vertex
@@ -25,6 +25,7 @@ module CrShader
     # ```
     module Stages
       extend self
+
       # **Vertex Stage**: Processor executed once per vertex primitive.
       #
       # Executed on the GPU vertex shader unit. Used to transform geometry, displace vertices,
@@ -39,7 +40,7 @@ module CrShader
       # GDShader prohibits early `return` statements inside processor functions.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def vertex
       #   world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz
       #   VERTEX.y += sin(TIME * 2.0 + world_pos.x) * 0.2
@@ -58,7 +59,7 @@ module CrShader
       # - 2D CanvasItem: `COLOR`, `UV`, `SCREEN_UV`, `POINT_COORD`, `FRAGCOORD`.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def fragment
       #   col = texture(main_texture, UV).rgb
       #   ALBEDO = col
@@ -83,7 +84,7 @@ module CrShader
       # - `DIFFUSE_LIGHT`, `SPECULAR_LIGHT`: Accumulator outputs.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def light
       #   n_dot_l = clamp(dot(NORMAL, LIGHT), 0.0, 1.0)
       #   cel = floor(n_dot_l * 3.0) / 3.0
@@ -107,7 +108,7 @@ module CrShader
       # - `SEED`, `INDEX`, `NUMBER`.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def start
       #   VELOCITY = vec3(0.0, 5.0, 0.0) + vec3(hash11(float(INDEX)), 0.0, 0.0)
       #   COLOR = vec4(1.0, 0.6, 0.1, 1.0)
@@ -129,7 +130,7 @@ module CrShader
       # - `ACTIVE`: Boolean indicating whether particle continues living.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def process
       #   VELOCITY.y -= 9.8 * DELTA # Gravity
       #   TRANSFORM[3].xyz += VELOCITY * DELTA
@@ -151,7 +152,7 @@ module CrShader
       # - `COLOR`: Final output radiance color.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def sky
       #   sun_disc = clamp(dot(EYEDIR, LIGHT0_DIRECTION), 0.0, 1.0) ** 64.0
       #   COLOR = mix(vec3(0.2, 0.4, 0.8), vec3(1.0, 0.9, 0.5), sun_disc)
@@ -173,7 +174,7 @@ module CrShader
       # - `FOG_COLOR`: Output scattering and emissive color.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def fog
       #   DENSITY = clamp(0.1 + sin(WORLD_POSITION.x * 0.5) * 0.05, 0.0, 1.0)
       #   FOG_COLOR = vec4(0.8, 0.85, 0.9, 1.0)
@@ -195,7 +196,7 @@ module CrShader
       # - `gl_LocalInvocationIndex`: Linearized 1D index within the workgroup.
       #
       # #### Example:
-      # ```crystal
+      # ```
       # def main
       #   coord = ivec2(gl_GlobalInvocationID.xy)
       #   pixel = imageLoad(input_image, coord)

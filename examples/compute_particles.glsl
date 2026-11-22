@@ -4,8 +4,11 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 layout(set = 0, binding = 0, std430) restrict buffer ParticleBuffer {
 	vec4 positions[];
-	vec4 velocities[];
 } particle_buffer;
+
+layout(set = 0, binding = 1, std430) restrict buffer VelocityBuffer {
+	vec4 velocities[];
+} velocity_buffer;
 
 layout(push_constant, std430) uniform Params {
 	float delta_time;
@@ -19,7 +22,7 @@ void main() {
 		return;
 	}
 	vec3 pos = particle_buffer.positions[idx].xyz;
-	vec3 vel = particle_buffer.velocities[idx].xyz;
+	vec3 vel = velocity_buffer.velocities[idx].xyz;
 	vel = (vel + (params.gravity * params.delta_time));
 	pos = (pos + (vel * params.delta_time));
 	if ((pos.y < 0.0)) {
@@ -27,6 +30,6 @@ void main() {
 		vel.y=((-vel.y * 0.7));
 	}
 	particle_buffer.positions[idx] = vec4(pos, 1.0);
-	particle_buffer.velocities[idx] = vec4(vel, 0.0);
+	velocity_buffer.velocities[idx] = vec4(vel, 0.0);
 }
 

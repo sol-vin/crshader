@@ -5,14 +5,14 @@ module CrShader
   class FileWatcher
     property compiler : Compiler
     property target_override : ShaderTarget?
-    property interval : Time::Span
+    property interval : ::Time::Span
 
     def initialize(@compiler : Compiler, @target_override : ShaderTarget? = nil, @interval = 500.milliseconds)
     end
 
     def watch(path : String, output_dir : String? = nil)
       puts "Watching #{path} for changes... (Press Ctrl+C to stop)"
-      timestamps = {} of String => Time
+      timestamps = {} of String => ::Time
 
       # Initial scan
       files = find_crshader_files(path)
@@ -42,7 +42,7 @@ module CrShader
         [path]
       elsif Dir.exists?(path)
         files = [] of String
-        Dir.glob(File.join(path, "**", "*.crshader")).each do |f|
+        Dir.glob(File.join(path, "**", "*.crshader").gsub('\\', '/')).each do |f|
           files << f
         end
         files
@@ -55,8 +55,13 @@ module CrShader
       target = @target_override
       # Detect if file content has shader_type :compute
       content = File.read(input_file)
-      is_compute = content.includes?("shader_type :compute") || content.includes?("shader_type(\"compute\")")
-      ext = is_compute || target == ShaderTarget::GLSL ? ".glsl" : ".gdshader"
+      is_compute = content =~ /\b(shader_type\s*:?compute|shader\s*:?compute|compositor_effect|compositor_pass|compute_kernel|particle_simulation|compute_particles)\b/
+      ext = case target
+            when ShaderTarget::GLSL        then ".glsl"
+            when ShaderTarget::GDShaderInc then ".gdshaderinc"
+            when ShaderTarget::GDShader    then ".gdshader"
+            else                                is_compute ? ".glsl" : ".gdshader"
+            end
 
       out_file = if output_dir
                    basename = File.basename(input_file, ".crshader") + ext
@@ -67,7 +72,7 @@ module CrShader
 
       begin
         @compiler.compile_file(input_file, out_file)
-        time_str = Time.local.to_s("%H:%M:%S")
+        time_str = ::Time.local.to_s("%H:%M:%S")
         puts "[#{time_str}] Recompiled #{input_file} -> #{out_file}"
       rescue ex : ShaderError
         puts ex.formatted_message(content.lines)

@@ -13,7 +13,7 @@ module CrShader
       filename : String? = nil,
       target_override : ShaderTarget? = nil,
       optimize_names : Bool = false,
-      skip_validation : Bool = false
+      skip_validation : Bool = false,
     ) : String
       compiler = Compiler.new(
         target_override: target_override,

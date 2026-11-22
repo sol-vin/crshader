@@ -3,15 +3,16 @@ shader_type canvas_item;
 render_mode unshaded;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
-group_uniforms Tracking & Jitter;
+group_uniforms Tracking_Jitter;
 uniform float tracking_jitter : hint_range(0.0, 0.1, 0.005) = 0.015;
 uniform float tape_crease_speed : hint_range(0.1, 3.0, 0.1) = 0.5;
-group_uniforms Color Aberration;
+group_uniforms Color_Aberration;
 uniform float rgb_shift : hint_range(0.0, 0.03, 0.001) = 0.006;
 uniform float color_bleed : hint_range(0.0, 2.0, 0.1) = 0.8;
-group_uniforms Curvature & Tube;
+group_uniforms Curvature_Tube;
 uniform float tube_curvature : hint_range(0.0, 0.5, 0.02) = 0.12;
 uniform float vignette_strength : hint_range(0.0, 1.0, 0.05) = 0.35;
+group_uniforms;
 
 vec2 barrel_distortion(vec2 uv, float distortion) {
 	vec2 d = (uv - vec2(0.5, 0.5));
@@ -24,8 +25,8 @@ vec2 scanline_jitter(vec2 uv, float time, float intensity) {
 	return vec2((uv.x + offset), uv.y);
 }
 
-float rand() {
-	return fract((sin(dot(vec2(0.123, 0.456), vec2(12.9898, 78.233))) * 43758.5453123));
+float rand(vec2 uv) {
+	return fract((sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453123));
 }
 
 float vignette(vec2 uv, float radius, float softness) {

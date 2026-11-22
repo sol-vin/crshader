@@ -9,7 +9,7 @@ module CrShader
 
     def initialize(
       @resource_type : String = "ColorPalette",
-      @colors : Array(Tuple(Float32, Float32, Float32, Float32)) = [] of Tuple(Float32, Float32, Float32, Float32)
+      @colors : Array(Tuple(Float32, Float32, Float32, Float32)) = [] of Tuple(Float32, Float32, Float32, Float32),
     )
     end
 
@@ -31,7 +31,7 @@ module CrShader
             Crystal::NumberLiteral.new(r.to_s, :f32),
             Crystal::NumberLiteral.new(g.to_s, :f32),
             Crystal::NumberLiteral.new(b.to_s, :f32),
-            Crystal::NumberLiteral.new(a.to_s, :f32)
+            Crystal::NumberLiteral.new(a.to_s, :f32),
           ] of Crystal::ASTNode
         ).as(Crystal::ASTNode)
       end

@@ -235,6 +235,7 @@ describe "CrShader Advanced Features" do
 
     output = CrShader.compile(source, target: CrShader::ShaderTarget::GLSL)
     output.should contain("const int weights_size = 3;")
-    output.should contain("layout(set = 1, binding = 0) uniform float weights[3];")
+    output.should contain("layout(set = 1, binding = 0, std140) uniform CrShaderUniforms {")
+    output.should contain("float weights[3];")
   end
 end

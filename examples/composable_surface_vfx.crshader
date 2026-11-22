@@ -1,0 +1,63 @@
+# ==============================================================================
+# Composable Surface VFX - Traits, Specialization Features, Oklab Ramp & Inspect
+# ==============================================================================
+# Showcases Phase 2 CRShader authoring ergonomics in a single concise shader:
+# - `surface_material :toon` intent archetype
+# - `feature` flags & enum specialization (`rim_glow`, `dissolve_fx`, `wind_motion`, `quality`)
+# - `use_trait` single-pass trait fusion (`rim_fresnel`, `dissolve`, `wind_sway`, `hit_flash`)
+# - Perceptual `:oklab` multi-stop `gradient` & `curve`
+# - Fluent UV & color method chains (`.tile`, `.wave`, `.blend`)
+# - Live one-line `inspect` debug probes (stripped to zero cost with `--release`)
+
+surface_material :toon do
+  feature :rim_glow, default: true
+  feature :dissolve_fx, default: true
+  feature :wind_motion, default: false
+  feature :quality, options: [:low, :medium, :high], default: :medium
+
+  property base_tint : Color = Color.hex("#38bdf8"), hint: :source_color
+  property accent_tint : Color = Color.hex("#f472b6"), hint: :source_color
+  property roughness_val : Float32 = 0.35, range: 0.0..1.0
+  property metallic_val : Float32 = 0.08, range: 0.0..1.0
+
+  gradient :aurora_ramp, {
+    0.0 => Color.hex("#0f172a"),
+    0.45 => Color.hex("#2563eb"),
+    0.8 => Color.hex("#22d3ee"),
+    1.0 => Color.hex("#fef08a"),
+  }, space: :oklab, interp: :smooth
+
+  curve :elevation_curve, {
+    0.0 => 0.1,
+    0.5 => 0.65,
+    1.0 => 1.0,
+  }, interp: :smooth
+
+  when_feature :wind_motion do
+    use_trait "std/traits/wind_sway"
+  end
+
+  when_feature :rim_glow do
+    use_trait "std/traits/rim_fresnel"
+  end
+
+  when_feature :dissolve_fx do
+    use_trait "std/traits/dissolve"
+  end
+
+  use_trait "std/traits/hit_flash"
+
+  warped_uv = UV.tile(2.0).wave(6.0, 0.03)
+  ramp_t = elevation_curve(clamp(1.0 - warped_uv.y, 0.0, 1.0))
+  inspect :ramp_factor, ramp_t
+
+  base_col = aurora_ramp(ramp_t).rgb * base_tint.rgb
+  when_feature :quality, :high do
+    base_col = base_col.blend(:overlay, accent_tint.rgb, 0.35).saturate_color(1.15)
+  end
+
+  inspect :surface_albedo, base_col
+  ALBEDO = base_col
+  ROUGHNESS = roughness_val
+  METALLIC = metallic_val
+end

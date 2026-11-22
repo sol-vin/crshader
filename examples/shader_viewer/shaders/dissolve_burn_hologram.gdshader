@@ -2,18 +2,19 @@ shader_type spatial;
 
 render_mode cull_disabled, depth_draw_opaque;
 
-group_uniforms Base Appearance;
+group_uniforms Base_Appearance;
 uniform vec4 albedo_color : source_color = vec4(0.15, 0.45, 0.85, 1.0);
 uniform float roughness_val : hint_range(0.0, 1.0, 0.05) = 0.35;
-group_uniforms Dissolve Burn;
+group_uniforms Dissolve_Burn;
 uniform float dissolve_amount : hint_range(0.0, 1.0, 0.02) = 0.35;
 uniform float noise_scale : hint_range(1.0, 16.0, 0.5) = 4.0;
 uniform float burn_width : hint_range(0.01, 0.2, 0.01) = 0.08;
 uniform vec4 burn_color : source_color = vec4(1.0, 0.45, 0.05, 1.0);
-group_uniforms Hologram Scanlines;
+group_uniforms Hologram_Scanlines;
 uniform float holo_speed : hint_range(0.5, 10.0, 0.5) = 3.0;
 uniform float holo_density : hint_range(5.0, 60.0, 1.0) = 30.0;
 uniform float holo_intensity : hint_range(0.0, 1.0, 0.05) = 0.5;
+group_uniforms;
 
 varying vec3 v_world_pos;
 

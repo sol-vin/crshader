@@ -32,7 +32,7 @@ void fragment() {
 			cutoff = texture(mask_texture, uv).r;
 			break;
 	}
-	float is_solid;
+	bool is_solid;
 	bool is_burn;
 	float edge_factor;
 	if ((progress <= 0.001)) {

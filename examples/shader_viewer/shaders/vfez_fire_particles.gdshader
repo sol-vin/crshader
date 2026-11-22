@@ -9,8 +9,8 @@ uniform vec4 flame_mid_color : source_color = vec4(0.95, 0.35, 0.05, 1.0);
 uniform vec4 smoke_end_color : source_color = vec4(0.15, 0.15, 0.15, 0.0);
 
 void start() {
-	float rand_x = ((sin(((float(INDEX) * 12.9898) + SEED)) - 0.5) * spread_factor);
-	float rand_z = ((cos(((float(INDEX) * 78.233) + SEED)) - 0.5) * spread_factor);
+	float rand_x = ((sin(((float(INDEX) * 12.9898) + float(RANDOM_SEED))) - 0.5) * spread_factor);
+	float rand_z = ((cos(((float(INDEX) * 78.233) + float(RANDOM_SEED))) - 0.5) * spread_factor);
 	float rand_speed = (initial_speed * (0.8 + (0.4 * fract((sin(float(INDEX)) * 43758.5453)))));
 	VELOCITY = vec3(rand_x, rand_speed, rand_z);
 	COLOR = flame_start_color;

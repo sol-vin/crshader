@@ -108,6 +108,32 @@ module CrShader
         INV_PROJECTION_MATRIX = Types::Mat4.new(Types::Vec4.new, Types::Vec4.new, Types::Vec4.new, Types::Vec4.new)
         # Global game elapsed time in seconds.
         TIME = 0.0_f32
+        # Mathematical constant pi (3.14159265...).
+        PI = 3.14159265_f32
+        # Mathematical constant tau (6.28318530...).
+        TAU = 6.28318530_f32
+        # Mathematical constant Euler's number (2.71828182...).
+        E = 2.71828182_f32
+        # Fragment depth write override in clip space.
+        DEPTH = 0.0_f32
+        # World-space origin of the MeshInstance3D node.
+        NODE_POSITION_WORLD = Types::Vec3.new
+        # Per-instance index in MultiMesh or instanced draws.
+        INSTANCE_ID = 0_i32
+        # Viewport pixel dimensions `(width, height)`.
+        VIEWPORT_SIZE = Types::Vec2.new
+        # True when writing directly to an sRGB framebuffer.
+        OUTPUT_IS_SRGB = false
+        # Custom mesh vertex data channel 0.
+        CUSTOM0 = Types::Vec4.new
+        # Custom mesh vertex data channel 1.
+        CUSTOM1 = Types::Vec4.new
+        # Custom mesh vertex data channel 2.
+        CUSTOM2 = Types::Vec4.new
+        # Custom mesh vertex data channel 3.
+        CUSTOM3 = Types::Vec4.new
+        # True if the active light source in `light()` is a DirectionalLight3D.
+        LIGHT_IS_DIRECTIONAL = false
         # Normalized camera view direction in camera space.
         VIEW = Types::Vec3.new(0.0_f32, 0.0_f32, -1.0_f32)
         # Incident light direction vector (light processor only).

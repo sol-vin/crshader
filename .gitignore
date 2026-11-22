@@ -39,4 +39,8 @@ benchmarks/reports/
 ~*
 *.uid
 scratch/
+log/
+**/log/
+.bind_manifest.json
+**/.bind_manifest.json
 

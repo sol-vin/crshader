@@ -4,6 +4,9 @@ local_size 64, 1, 1
 
 buffer ParticleBuffer, set: 0, binding: 0, std: :std430, restrict: true do
   field positions : Array(Vec4)
+end
+
+buffer VelocityBuffer, set: 0, binding: 1, std: :std430, restrict: true do
   field velocities : Array(Vec4)
 end
 
@@ -20,7 +23,7 @@ def main()
   end
 
   pos = particle_buffer.positions[idx].xyz
-  vel = particle_buffer.velocities[idx].xyz
+  vel = velocity_buffer.velocities[idx].xyz
 
   vel = vel + params.gravity * params.delta_time
   pos = pos + vel * params.delta_time
@@ -31,5 +34,5 @@ def main()
   end
 
   particle_buffer.positions[idx] = vec4(pos, 1.0)
-  particle_buffer.velocities[idx] = vec4(vel, 0.0)
+  velocity_buffer.velocities[idx] = vec4(vel, 0.0)
 end

@@ -24,19 +24,24 @@ module CrShader
       # 1. Keywords
       keywords = [
         "shader", "shader_type", "render_mode", "setup_gdshader",
-        "uniform", "instance_uniform", "global_uniform", "varying", "const",
+        "uniform", "property", "sampler", "instance_uniform", "global_uniform", "varying", "const",
+        "feature", "when_feature", "unless_feature", "shader_trait", "use_trait", "gradient", "curve", "inspect",
         "buffer", "push_constant", "shared", "image2d", "local_size", "require",
         "group", "subgroup", "field",
         "def", "end", "class", "struct", "module", "if", "else", "elsif", "unless",
         "while", "until", "for", "in", "case", "when", "return", "break", "next",
-        "true", "false", "nil", "macro"
+        "true", "false", "nil", "macro",
       ]
       keywords.each do |kw|
         highlighter.call("add_keyword_color", kw, kw_color)
       end
 
-      # 2. Stages
-      stages = ["vertex", "fragment", "light", "start", "process", "sky", "fog", "main"]
+      # 2. Stages & Archetypes
+      stages = [
+        "vertex", "fragment", "light", "start", "process", "sky", "fog", "main",
+        "sprite_effect", "screen_effect", "ui_effect", "surface_material",
+        "compositor_effect", "process_pixel", "on_vertex", "on_fragment", "on_light", "on_pixel",
+      ]
       stages.each do |st|
         highlighter.call("add_keyword_color", st, Color.new(1.0_f32, 0.4_f32, 0.6_f32, 1.0_f32))
       end
@@ -49,7 +54,7 @@ module CrShader
         "Sampler2D", "SamplerCube", "Sampler2DArray", "Sampler3D",
         "Sampler2DShadow", "SamplerCubeShadow", "Sampler2DArrayShadow",
         "ISampler2D", "USampler2D", "Image2D", "IImage2D", "UImage2D", "Image3D",
-        "SubpassInput", "Array", "InOut", "Out"
+        "SubpassInput", "Array", "InOut", "Out",
       ]
       types.each do |t|
         highlighter.call("add_keyword_color", t, type_color)
@@ -70,7 +75,7 @@ module CrShader
         "INDEX", "NUMBER", "SEED", "EYEDIR", "HALF_RES_COLOR", "QUARTER_RES_COLOR",
         "WORLD_POSITION", "FOG_COLOR", "DENSITY", "SDF",
         "gl_NumWorkGroups", "gl_WorkGroupSize", "gl_WorkGroupID",
-        "gl_LocalInvocationID", "gl_GlobalInvocationID", "gl_LocalInvocationIndex"
+        "gl_LocalInvocationID", "gl_GlobalInvocationID", "gl_LocalInvocationIndex",
       ]
       builtins.each do |b|
         highlighter.call("add_member_keyword_color", b, builtin_color)

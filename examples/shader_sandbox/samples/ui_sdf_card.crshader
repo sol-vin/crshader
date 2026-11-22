@@ -1,0 +1,53 @@
+# ==============================================================================
+# UI SDF Card & Animated Progress Ring - `ui_effect` + `std/sdf2d` + `std/easing`
+# ==============================================================================
+# Demonstrates aspect-corrected 2D UI rendering on any Godot `Control` / `Panel`
+# with derivative-based `fwidth` anti-aliasing, Oklab gradients, and fluent chains.
+
+ui_effect do |uv, centered_uv, color|
+  require "std/sdf2d"
+  require "std/easing"
+
+  property card_size : Vec2 = Vec2.new(0.42, 0.32)
+  property corner_radius : Float32 = 0.07, range: 0.0..0.25
+  property border_width : Float32 = 0.012, range: 0.002..0.05
+  property progress : Float32 = 0.72, range: 0.0..1.0
+  property glow_strength : Float32 = 0.65, range: 0.0..2.0
+
+  gradient :card_bg, {
+    0.0 => Color.hex("#0b1120"),
+    1.0 => Color.hex("#1e293b"),
+  }, space: :oklab
+
+  gradient :ring_accent, {
+    0.0 => Color.hex("#38bdf8"),
+    0.5 => Color.hex("#818cf8"),
+    1.0 => Color.hex("#f472b6"),
+  }, space: :oklab
+
+  card_d = sdf2d_rounded_box(centered_uv, card_size, corner_radius)
+  card_mask = sdf_fill(card_d)
+  border_mask = sdf_stroke(card_d, border_width)
+  outer_glow = sdf_glow(card_d, 0.08, 2.2) * glow_strength
+
+  polar_coords = uv.polar
+  anim_prog = clamp(progress * 0.85 + osc_sine(TIME, 0.35) * 0.15, 0.0, 1.0)
+  arc_mask = smoothstep(anim_prog + 0.01, anim_prog - 0.01, polar_coords.y)
+
+  ring_d = sdf2d_ring(centered_uv, 0.16, 0.028)
+  ring_track = sdf_fill(ring_d)
+  ring_active = ring_track * arc_mask
+
+  inspect :sdf_card_dist, card_d
+
+  bg_rgb = card_bg(uv.y).rgb
+  accent_rgb = ring_accent(polar_coords.y).rgb
+
+  composed = bg_rgb * card_mask
+  composed = mix(composed, bg_rgb * 1.8, ring_track * 0.45)
+  composed = mix(composed, accent_rgb, ring_active)
+  composed = composed + accent_rgb * (border_mask * 0.85 + outer_glow * 0.45)
+
+  alpha_out = clamp(card_mask + border_mask + outer_glow * 0.5, 0.0, 1.0) * color.a
+  vec4(composed, alpha_out)
+end
