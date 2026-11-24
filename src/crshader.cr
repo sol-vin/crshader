@@ -313,86 +313,35 @@ module CrShader
       when "new"
         sub_args = args[1..-1]
         tmpl = "spatial"
+        list_only = false
         new_out_file : String? = nil
         OptionParser.parse(sub_args) do |opts|
           opts.banner = "Usage: crshader new <output.crshader> [options]"
-          opts.on("-t TYPE", "--template TYPE", "Template type: spatial, canvas, postprocess, or compute (default: spatial)") { |t| tmpl = t }
+          opts.on("-t TYPE", "--template TYPE", "Template id or mode (e.g. spatial, canvas, particles, sky, fog, compute, spatial_toon, canvas_ui_sdf_card)") { |t| tmpl = t }
+          opts.on("-l", "--list", "List all available CRShader templates") { list_only = true }
           opts.unknown_args { |unknown| new_out_file = unknown.first? }
+        end
+        if list_only
+          Templates.modes.each do |mode|
+            puts "#{mode.display_name} (#{mode.slug}):"
+            Templates.for_mode(mode).each do |entry|
+              puts "  - #{entry.id.ljust(32)} #{entry.name} — #{entry.summary}"
+            end
+          end
+          return
         end
         unless new_out_file
           STDERR.puts "Error: specify output file name. Usage: crshader new <filename.crshader>"
           exit 1
         end
-        content = case tmpl.downcase
-                  when "canvas", "canvas_item", "2d"
-                    <<-CR
-                      shader_type :canvas_item
-                      render_mode :unshaded
-
-                      uniform tint : Color = Color.new(1.0, 1.0, 1.0, 1.0), hint: :source_color
-
-                      def fragment
-                        COLOR = texture(TEXTURE, UV) * tint
-                      end
-                    CR
-                  when "postprocess", "post_process", "screen"
-                    <<-CR
-                      shader_type :canvas_item
-                      render_mode :unshaded
-
-                      require "std/post_processing"
-
-                      uniform screen_tex : Sampler2D, hint: :screen_texture, filter: :linear
-                      uniform vignette_radius : Float32 = 0.75, hint: range(0.1, 1.0, 0.05)
-
-                      def fragment
-                        col = texture(screen_tex, SCREEN_UV)
-                        vig = vignette(SCREEN_UV, vignette_radius, 0.4)
-                        COLOR = vec4(col.rgb * vig, 1.0)
-                      end
-                    CR
-                  when "compute"
-                    <<-CR
-                      shader_type :compute
-
-                      local_size 8, 8, 1
-
-                      image2d output_image, format: :rgba32f, set: 0, binding: 0
-
-                      def main
-                        pos = ivec2(gl_GlobalInvocationID.xy)
-                        color = vec4(float(pos.x) / 512.0, float(pos.y) / 512.0, 0.5, 1.0)
-                        imageStore(output_image, pos, color)
-                      end
-                    CR
-                  when "compute_particles", "particles_compute"
-                    <<-CR
-                      particle_simulation 64 do
-                        step_particles do |idx, pos, vel, life|
-                          life = life - sim_params.delta_time
-                          vel = apply_linear_drag(vel + sim_params.gravity * sim_params.delta_time, sim_params.drag, sim_params.delta_time)
-                          pos = integrate_euler(pos, vel, sim_params.delta_time)
-                        end
-                      end
-                    CR
-                  else
-                    <<-CR
-                      shader_type :spatial
-                      render_mode :cull_back, :diffuse_lambert
-
-                      uniform albedo : Color = Color.new(0.2, 0.6, 0.95, 1.0), hint: :source_color
-                      uniform roughness : Float32 = 0.3, hint: range(0.0, 1.0, 0.05)
-                      uniform metallic : Float32 = 0.1, hint: range(0.0, 1.0, 0.05)
-
-                      def fragment
-                        ALBEDO = albedo.rgb
-                        ROUGHNESS = roughness
-                        METALLIC = metallic
-                      end
-                    CR
-                  end
-        File.write(new_out_file.not_nil!, content.strip + "\n")
-        puts "Created new #{tmpl} shader -> #{new_out_file}"
+        alias_key = case tmpl.downcase
+                    when "postprocess", "post_process", "screen"   then "canvas_screen_postprocess"
+                    when "compute_particles", "particles_compute" then "compute_particle_sim"
+                    else                                                tmpl
+                    end
+        entry = Templates.find(alias_key) || Templates.default_for_mode(Templates::Mode::Spatial)
+        File.write(new_out_file.not_nil!, entry.render(new_out_file.not_nil!))
+        puts "Created new #{entry.mode.display_name} shader (#{entry.id}) -> #{new_out_file}"
         return
       else
         # If first argument is a file ending in .crshader, treat as build

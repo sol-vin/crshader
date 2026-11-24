@@ -39,7 +39,6 @@ node CrShaderPlugin < EditorPlugin do
     CrShader::ResourceFormatSaverCRShader.ensure_registered
 
     setup_editor_highlighter_hook
-    CrShader::ShaderEditorIntegration.locate_godot_shader_editor!
     set_process(true)
   end
 
@@ -167,8 +166,12 @@ node CrShaderPlugin < EditorPlugin do
         if curr_ed && !curr_ed.pointer.null?
           base_ed = curr_ed.call_obj("get_base_editor")
           if base_ed && !base_ed.pointer.null?
-            edit = Godot::CodeEdit.new(base_ed.pointer)
-            CrShader::Highlighter.apply_to_code_edit(edit)
+            existing_hl = base_ed.call_obj("get_syntax_highlighter") rescue nil
+            existing_cls = (existing_hl && !existing_hl.pointer.null?) ? (existing_hl.get_class rescue "") : ""
+            if existing_cls != "CrShaderSyntaxHighlighter"
+              edit = Godot::CodeEdit.new(base_ed.pointer)
+              CrShader::Highlighter.apply_to_code_edit(edit)
+            end
           end
         end
       end

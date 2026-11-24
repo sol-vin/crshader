@@ -15,6 +15,7 @@ require "./transpiler/glsl/emitter"
 require "./runtime/variant_cache"
 require "./composer/shader_composer"
 require "./builder/shader_builder"
+require "./templates"
 
 module CrShader
   class Compiler

@@ -2,6 +2,7 @@ require "lapis"
 require "../compiler"
 require "../../crshader_resource"
 require "../../highlighter"
+require "./shader_create_dialog_integration"
 
 module CrShader
   include Godot
@@ -103,6 +104,28 @@ module CrShader
           toolbar.call("add_child", split_chk)
         end
 
+        tmpl_opt = Godot.create(Godot::OptionButton)
+        if tmpl_opt && !tmpl_opt.pointer.null?
+          tmpl_opt.call("add_item", "📋 Template...", 0_i64)
+          tmpl_list = Templates.all
+          tmpl_popup = tmpl_opt.call_obj("get_popup") rescue nil
+          tmpl_list.each_with_index do |entry, idx|
+            item_id = (idx + 1).to_i64
+            tmpl_opt.call("add_item", "[#{entry.mode.display_name}] #{entry.name}", item_id)
+            if tmpl_popup && !tmpl_popup.pointer.null?
+              tmpl_popup.call("set_item_tooltip", item_id, entry.summary) rescue nil
+            end
+          end
+          tmpl_opt.connect("item_selected") do |args|
+            idx = (args.first?.try(&.as_i) || 0).to_i32
+            if idx > 0 && idx <= tmpl_list.size
+              apply_template(tmpl_list[idx - 1])
+              tmpl_opt.call("select", 0_i64)
+            end
+          end
+          toolbar.call("add_child", tmpl_opt)
+        end
+
         trait_opt = Godot.create(Godot::OptionButton)
         if trait_opt && !trait_opt.pointer.null?
           trait_opt.call("add_item", "🧩 Insert Trait...", 0_i64)
@@ -169,9 +192,14 @@ module CrShader
                 pressed = ev_obj.call_bool("is_pressed") rescue false
                 echo = ev_obj.call_bool("is_echo") rescue false
                 ctrl = ev_obj.call_bool("is_ctrl_pressed") rescue false
+                shift = ev_obj.call_bool("is_shift_pressed") rescue false
+                alt = ev_obj.call_bool("is_alt_pressed") rescue false
                 keycode = ev_obj.call_i64("get_keycode") rescue 0_i64
-                if pressed && !echo && ctrl && keycode == 83_i64 # KEY_S
+                if pressed && !echo && ctrl && !shift && !alt && keycode == 83_i64 # KEY_S
                   save_and_sync!
+                  src_edit.call("accept_event") rescue nil
+                elsif pressed && !echo && ctrl && !shift && !alt && keycode == 78_i64 # KEY_N
+                  ShaderCreateDialogIntegration.prompt_new_crshader!
                   src_edit.call("accept_event") rescue nil
                 end
               end
@@ -295,6 +323,20 @@ module CrShader
         ed.call("insert_line_at", line_idx, "use_trait \"std/traits/#{trait_name}\"")
         @dirty = true
         @debounce_sec = 0.1_f64
+      end
+    end
+
+    def apply_template(entry : Templates::Entry) : Void
+      if ed = @source_edit
+        return if ed.pointer.null?
+        rendered = entry.render(@file_path)
+        ed.call("select_all") rescue nil
+        ed.call("insert_text_at_caret", rendered) rescue ed.call("set_text", rendered)
+        if res = @crshader_res
+          res.crshader_source = get_source_text
+        end
+        @dirty = false
+        compile_preview(sync_disk: false)
       end
     end
 
@@ -447,11 +489,19 @@ module CrShader
     @@shader_list : Godot::ItemList? = nil
     @@shader_tabs : Godot::TabContainer? = nil
     @@top_menu_bar : Godot::HBoxContainer? = nil
+    @@file_menu_btn : Godot::MenuButton? = nil
     @@crshader_menu_btn : Godot::MenuButton? = nil
     @@edit_source_btn : Godot::Button? = nil
+    @@template_submenu : Godot::PopupMenu? = nil
     @@menu_files : Array(String) = [] of String
     @@tab_editors : Hash(String, CrShaderTabEditor) = {} of String => CrShaderTabEditor
+    @@opening_paths : Set(String) = Set(String).new
     @@current_companion_crshader : String = ""
+    @@last_companion_lookup_tip : String = "\x00"
+
+    def shader_dock : Godot::Control?
+      @@shader_dock
+    end
 
     def active_editors : Hash(String, CrShaderTabEditor)
       @@tab_editors.reject! { |_k, v| v.pointer.null? || !Bridge.is_object_valid(v.pointer) }
@@ -566,6 +616,8 @@ module CrShader
         return node
       end
 
+      return nil if cls.in?("PopupMenu", "EditorFileDialog", "ConfirmationDialog", "AcceptDialog", "CreateDialog", "ScriptCreateDialog", "ShaderCreateDialog", "ProjectSettingsEditor", "Tree", "ItemList", "CodeEdit")
+
       cnt = (node.call_i64("get_child_count") rescue 0_i64).to_i32
       cnt.times do |i|
         child = node.call_obj("get_child", i.to_i64) rescue nil
@@ -578,20 +630,34 @@ module CrShader
     end
 
     private def find_shader_editor_internals(node : Godot::Node, depth : Int32) : Void
-      return if depth > 10 || node.pointer.null?
+      return if depth > 8 || node.pointer.null?
       cls = node.get_class rescue ""
+      return if depth > 0 && cls.in?("PopupMenu", "EditorFileDialog", "ConfirmationDialog", "AcceptDialog", "CreateDialog", "ScriptCreateDialog", "ShaderCreateDialog", "FindReplaceBar", "DocumentOutline")
 
-      if cls == "ItemList" && !valid_ctrl?(@@shader_list)
+      if cls == "HBoxContainer" && !valid_ctrl?(@@top_menu_bar)
+        ccnt = (node.call_i64("get_child_count", true) rescue (node.call_i64("get_child_count") rescue 0_i64)).to_i32
+        ccnt.times do |ci|
+          ch = (node.call_obj("get_child", ci.to_i64, true) rescue (node.call_obj("get_child", ci.to_i64) rescue nil))
+          next unless ch && !ch.pointer.null? && (ch.get_class rescue "") == "MenuButton"
+          if (ch.call_str("get_text") rescue "") == "File"
+            @@top_menu_bar = Godot::HBoxContainer.new(node.pointer)
+            @@file_menu_btn = Godot::MenuButton.new(ch.pointer)
+            break
+          end
+        end
+      elsif cls == "ItemList" && !valid_ctrl?(@@shader_list)
         @@shader_list = Godot::ItemList.new(node.pointer)
-        # Parent of ItemList is the left VBoxContainer; its first HBoxContainer child is the File/Menu bar
-        if parent = (node.call_obj("get_parent") rescue nil)
-          if !parent.pointer.null?
-            pcnt = (parent.call_i64("get_child_count") rescue 0_i64).to_i32
-            pcnt.times do |pi|
-              sib = parent.call_obj("get_child", pi.to_i64) rescue nil
-              if sib && !sib.pointer.null? && (sib.get_class rescue "") == "HBoxContainer"
-                @@top_menu_bar = Godot::HBoxContainer.new(sib.pointer)
-                break
+        # Fallback for pre-beta4 layout where ItemList's parent VBoxContainer held the menu HBoxContainer
+        if !valid_ctrl?(@@top_menu_bar)
+          if parent = (node.call_obj("get_parent") rescue nil)
+            if !parent.pointer.null?
+              pcnt = (parent.call_i64("get_child_count") rescue 0_i64).to_i32
+              pcnt.times do |pi|
+                sib = parent.call_obj("get_child", pi.to_i64) rescue nil
+                if sib && !sib.pointer.null? && (sib.get_class rescue "") == "HBoxContainer"
+                  @@top_menu_bar = Godot::HBoxContainer.new(sib.pointer)
+                  break
+                end
               end
             end
           end
@@ -600,12 +666,73 @@ module CrShader
         @@shader_tabs = Godot::TabContainer.new(node.pointer)
       end
 
-      cnt = (node.call_i64("get_child_count") rescue 0_i64).to_i32
+      cnt = (node.call_i64("get_child_count", true) rescue (node.call_i64("get_child_count") rescue 0_i64)).to_i32
       cnt.times do |i|
-        child = node.call_obj("get_child", i.to_i64) rescue nil
+        child = (node.call_obj("get_child", i.to_i64, true) rescue (node.call_obj("get_child", i.to_i64) rescue nil))
         next unless child && !child.pointer.null?
         find_shader_editor_internals(Godot::Node.new(child.pointer), depth + 1)
       end
+    end
+
+    # Triggers Godot's native `File -> New Shader...` (`Ctrl+N`) menu action in the Shader Editor.
+    def trigger_native_new_shader_menu! : Bool
+      locate_godot_shader_editor!
+      return false unless valid_ctrl?(@@file_menu_btn)
+      popup = @@file_menu_btn.not_nil!.call_obj("get_popup") rescue nil
+      return false unless popup && !popup.pointer.null?
+
+      new_id = 2_i64
+      icnt = (popup.call_i64("get_item_count") rescue 0_i64).to_i32
+      icnt.times do |i|
+        txt = popup.call_str("get_item_text", i.to_i64) rescue ""
+        if txt.starts_with?("New Shader") && !txt.includes?("Include")
+          new_id = popup.call_i64("get_item_id", i.to_i64) rescue 2_i64
+          break
+        end
+      end
+
+      popup.call("emit_signal", "id_pressed", new_id)
+      true
+    rescue
+      false
+    end
+
+    private def resolve_list_tab_index(list : Godot::ItemList, item_idx : Int32) : Int32
+      raw = (list.call_str("get_item_metadata", item_idx.to_i64) rescue "").strip
+      raw.to_i? || item_idx
+    end
+
+    # Returns true if the currently selected Shader Editor tab is a `.crshader` resource.
+    def current_tab_is_crshader? : Bool
+      return false unless valid_ctrl?(@@shader_tabs)
+      tabs = @@shader_tabs.not_nil!
+      curr_tab = (tabs.call_i64("get_current_tab") rescue -1_i64).to_i32
+      return false if curr_tab < 0
+
+      if valid_ctrl?(@@shader_list)
+        list = @@shader_list.not_nil!
+        sel_items = list.call("get_selected_items") rescue nil
+        icnt = (list.call_i64("get_item_count") rescue 0_i64).to_i32
+        icnt.times do |i|
+          meta_idx = resolve_list_tab_index(list, i)
+          if meta_idx == curr_tab
+            tip = list.call_str("get_item_tooltip", i.to_i64) rescue ""
+            txt = (list.call_str("get_item_text", i.to_i64) rescue "").gsub("(*)", "").strip
+            return true if tip.downcase.ends_with?(".crshader") || txt.downcase.ends_with?(".crshader")
+          end
+        end
+        _ = sel_items
+      end
+
+      slot = (tabs.call_obj("get_tab_control", curr_tab.to_i64) rescue (tabs.call_obj("get_child", curr_tab.to_i64) rescue nil))
+      if slot && !slot.pointer.null?
+        return true if (slot.get_class rescue "") == "CrShaderTabEditor"
+        existing = slot.call_obj("find_child", "CrShaderTabEditorHost", false, false) rescue nil
+        return true if existing && !existing.pointer.null?
+      end
+      false
+    rescue
+      false
     end
 
     # Injects the `🔮 CRShader` menu and contextual `Edit .crshader Source` button into Godot's Shader Editor bar.
@@ -654,10 +781,56 @@ module CrShader
 
     private def populate_crshader_popup!(popup : Godot::PopupMenu) : Void
       popup.call("clear")
+      popup.call("add_item", "➕ New CRShader... (Ctrl+N)", 9002_i64)
+
+      # Submenu with all built-in templates for 1-click creation
+      sub = @@template_submenu
+      if sub.nil? || sub.not_nil!.pointer.null? || !Bridge.is_object_valid(sub.not_nil!.pointer)
+        created_sub = Godot.create(Godot::PopupMenu)
+        if created_sub && !created_sub.pointer.null?
+          created_sub.call("set_name", "CRShaderTemplatesSubmenu")
+          created_sub.connect("id_pressed") do |args|
+            tid = (args.first?.try(&.as_i) || -1).to_i32
+            all_tmpls = Templates.all
+            if tid >= 0 && tid < all_tmpls.size
+              ShaderCreateDialogIntegration.prompt_new_crshader!(template_id: all_tmpls[tid].id)
+            end
+          end
+          popup.call("add_child", created_sub)
+          @@template_submenu = created_sub
+          sub = created_sub
+        end
+      elsif (sub.not_nil!.call_obj("get_parent") rescue nil).try(&.pointer) != popup.pointer
+        if old_p = (sub.not_nil!.call_obj("get_parent") rescue nil)
+          old_p.call("remove_child", sub.not_nil!) rescue nil unless old_p.pointer.null?
+        end
+        popup.call("add_child", sub.not_nil!)
+      end
+
+      if sm = sub
+        sm.call("clear")
+        all_tmpls = Templates.all
+        last_mode : Templates::Mode? = nil
+        all_tmpls.each_with_index do |entry, idx|
+          if last_mode != entry.mode
+            sm.call("add_separator", entry.mode.display_name, (8000 + idx).to_i64)
+            last_mode = entry.mode
+          end
+          sm.call("add_item", entry.name, idx.to_i64)
+          item_row = (sm.call_i64("get_item_count") rescue 1_i64) - 1_i64
+          sm.call("set_item_tooltip", item_row, entry.summary) rescue nil
+        end
+        popup.call("add_submenu_node_item", "📋 New CRShader from Template", sm, 9003_i64) rescue (
+          popup.call("add_submenu_item", "📋 New CRShader from Template", "CRShaderTemplatesSubmenu", 9003_i64) rescue nil
+        )
+      end
+
+      popup.call("add_separator", "", 9004_i64)
       @@menu_files = discover_project_crshaders
       if @@menu_files.empty?
-        popup.call("add_item", "(No .crshader files found)", 9999_i64)
-        popup.call("set_item_disabled", 0_i64, true)
+        popup.call("add_item", "(No .crshader files in project yet)", 9999_i64)
+        empty_idx = (popup.call_i64("get_item_count") rescue 1_i64) - 1_i64
+        popup.call("set_item_disabled", empty_idx, true)
       else
         @@menu_files.each_with_index do |res_path, idx|
           label = res_path.sub(/^res:\/\//, "")
@@ -672,6 +845,8 @@ module CrShader
     private def handle_crshader_menu_id(id : Int32) : Void
       if id >= 0 && id < @@menu_files.size
         open_shader(@@menu_files[id])
+      elsif id == 9002
+        ShaderCreateDialogIntegration.prompt_new_crshader!
       elsif id == 9001
         compile_all_project_crshaders!
       end
@@ -742,49 +917,63 @@ module CrShader
         end
       end
 
-      # Ask Godot's EditorInterface to edit the CRShader resource so ShaderEditorPlugin registers it in Shader Editor
-      if res_obj && !res_obj.not_nil!.pointer.null? && !Godot::EditorInterface.singleton_ptr.null?
-        ei = Godot::EditorInterface.new(Godot::EditorInterface.singleton_ptr)
-        ei.call("edit_resource", res_obj.not_nil!) rescue nil
+      if !res_path.empty?
+        if existing = active_editors[res_path]?
+          focus_crshader_in_list!(res_path)
+          return existing
+        end
+        return nil if @@opening_paths.includes?(res_path)
       end
 
-      reveal_shader_editor_dock!(host_plugin)
-      sync_shader_tabs!
+      @@opening_paths << res_path unless res_path.empty?
+      begin
+        # Ask Godot's EditorInterface to edit the CRShader resource so ShaderEditorPlugin registers it in Shader Editor
+        if res_obj && !res_obj.not_nil!.pointer.null? && !Godot::EditorInterface.singleton_ptr.null?
+          ei = Godot::EditorInterface.new(Godot::EditorInterface.singleton_ptr)
+          ei.call("edit_resource", res_obj.not_nil!) rescue nil
+        end
 
-      if existing = active_editors[res_path]?
-        focus_crshader_in_list!(res_path)
-        return existing
-      end
+        reveal_shader_editor_dock!(host_plugin)
+        sync_shader_tabs!
 
-      # Fallback when ShaderEditorPlugin did not create a slot (e.g. headless spec or standalone):
-      editor = Godot.create(CrShader::CrShaderTabEditor)
-      return nil unless editor && !editor.pointer.null?
-      editor.ensure_ui_built!
-      if r = res_obj
-        editor.bind_resource(r)
-      elsif !res_path.empty?
-        editor.load_crshader_file(res_path)
-      end
+        if existing = active_editors[res_path]?
+          focus_crshader_in_list!(res_path)
+          return existing
+        end
 
-      if valid_ctrl?(@@shader_tabs)
-        tabs = @@shader_tabs.not_nil!
-        tab_title = File.basename(res_path.empty? ? "untitled.crshader" : res_path)
-        editor.call("set_name", tab_title)
-        tabs.call("add_child", editor)
-        new_idx = (tabs.call_i64("get_child_count") rescue 1_i64) - 1_i64
-        tabs.call("set_current_tab", new_idx) rescue nil
-        if valid_ctrl?(@@shader_list)
-          list = @@shader_list.not_nil!
-          item_idx = (list.call_i64("add_item", tab_title) rescue -1_i64)
-          if item_idx >= 0
-            list.call("set_item_tooltip", item_idx, res_path) rescue nil
-            list.call("select", item_idx) rescue nil
+        # Fallback when ShaderEditorPlugin did not create a slot (e.g. headless spec or standalone):
+        editor = Godot.create(CrShader::CrShaderTabEditor)
+        return nil unless editor && !editor.pointer.null?
+        editor.ensure_ui_built!
+        if r = res_obj
+          editor.bind_resource(r)
+        elsif !res_path.empty?
+          editor.load_crshader_file(res_path)
+        end
+
+        if valid_ctrl?(@@shader_tabs)
+          tabs = @@shader_tabs.not_nil!
+          tab_title = File.basename(res_path.empty? ? "untitled.crshader" : res_path)
+          editor.call("set_name", tab_title)
+          tabs.call("add_child", editor)
+          new_idx = (tabs.call_i64("get_tab_count") rescue (tabs.call_i64("get_child_count") rescue 1_i64)) - 1_i64
+          tabs.call("set_current_tab", new_idx) rescue nil
+          if valid_ctrl?(@@shader_list)
+            list = @@shader_list.not_nil!
+            item_idx = (list.call_i64("add_item", tab_title) rescue -1_i64)
+            if item_idx >= 0
+              list.call("set_item_tooltip", item_idx, res_path) rescue nil
+              list.call("set_item_metadata", item_idx, new_idx) rescue nil
+              list.call("select", item_idx) rescue nil
+            end
           end
         end
-      end
 
-      @@tab_editors[res_path] = editor unless res_path.empty?
-      editor
+        @@tab_editors[res_path] = editor unless res_path.empty?
+        editor
+      ensure
+        @@opening_paths.delete(res_path) unless res_path.empty?
+      end
     end
 
     private def focus_crshader_in_list!(res_path : String) : Void
@@ -798,7 +987,8 @@ module CrShader
         tip = list.call_str("get_item_tooltip", i.to_i64) rescue ""
         if tip == res_path || txt == bname
           list.call("select", i.to_i64) rescue nil
-          tabs.call("set_current_tab", i.to_i64) rescue nil
+          tab_idx = resolve_list_tab_index(list, i)
+          tabs.call("set_current_tab", tab_idx.to_i64) rescue nil
           break
         end
       end
@@ -809,21 +999,25 @@ module CrShader
     # in-place with `CrShaderTabEditor`, plus updates the contextual `Edit .crshader` button!
     def sync_shader_tabs! : Void
       return unless locate_godot_shader_editor!
+      ShaderCreateDialogIntegration.sync_dialogs!
+      ensure_toolbar_controls!
       return unless valid_ctrl?(@@shader_list) && valid_ctrl?(@@shader_tabs)
 
       list = @@shader_list.not_nil!
       tabs = @@shader_tabs.not_nil!
       item_cnt = (list.call_i64("get_item_count") rescue 0_i64).to_i32
-      tab_cnt = (tabs.call_i64("get_child_count") rescue 0_i64).to_i32
-      n = Math.min(item_cnt, tab_cnt)
+      tab_cnt = (tabs.call_i64("get_tab_count") rescue (tabs.call_i64("get_child_count") rescue 0_i64)).to_i32
 
-      n.times do |i|
+      item_cnt.times do |i|
         tip = list.call_str("get_item_tooltip", i.to_i64) rescue ""
         txt = (list.call_str("get_item_text", i.to_i64) rescue "").gsub("(*)", "").strip
         cand_path = !tip.empty? ? tip : txt
         next unless cand_path.downcase.ends_with?(".crshader")
 
-        slot = tabs.call_obj("get_child", i.to_i64) rescue nil
+        tab_idx = resolve_list_tab_index(list, i)
+        next if tab_idx < 0 || tab_idx >= tab_cnt
+
+        slot = (tabs.call_obj("get_tab_control", tab_idx.to_i64) rescue (tabs.call_obj("get_child", tab_idx.to_i64) rescue nil))
         next unless slot && !slot.pointer.null?
 
         # If this slot is already our CrShaderTabEditor or already hosts one, keep it synced
@@ -857,21 +1051,19 @@ module CrShader
       if valid_ctrl?(@@edit_source_btn)
         ebtn = @@edit_source_btn.not_nil!
         curr_tab = (tabs.call_i64("get_current_tab") rescue -1_i64).to_i32
-        companion : String? = nil
-        if curr_tab >= 0 && curr_tab < item_cnt
-          curr_tip = list.call_str("get_item_tooltip", curr_tab.to_i64) rescue ""
-          if !curr_tip.empty? && !curr_tip.downcase.ends_with?(".crshader")
-            companion = find_companion_crshader(curr_tip)
+        curr_tip = (curr_tab >= 0 && curr_tab < item_cnt) ? (list.call_str("get_item_tooltip", curr_tab.to_i64) rescue "") : ""
+        if curr_tip != @@last_companion_lookup_tip
+          @@last_companion_lookup_tip = curr_tip
+          companion = (!curr_tip.empty? && !curr_tip.downcase.ends_with?(".crshader")) ? find_companion_crshader(curr_tip) : nil
+          if comp = companion
+            @@current_companion_crshader = comp
+            ebtn.call("set_text", "🔮 Edit #{File.basename(comp)}")
+            ebtn.call("set_tooltip_text", "Open authoring CrShader source (#{comp}) in the Shader Editor")
+            ebtn.call("set_visible", true)
+          else
+            @@current_companion_crshader = ""
+            ebtn.call("set_visible", false)
           end
-        end
-        if comp = companion
-          @@current_companion_crshader = comp
-          ebtn.call("set_text", "🔮 Edit #{File.basename(comp)}")
-          ebtn.call("set_tooltip_text", "Open authoring CrShader source (#{comp}) in the Shader Editor")
-          ebtn.call("set_visible", true)
-        else
-          @@current_companion_crshader = ""
-          ebtn.call("set_visible", false)
         end
       end
     rescue
@@ -885,6 +1077,7 @@ module CrShader
     end
 
     def cleanup! : Void
+      ShaderCreateDialogIntegration.cleanup!
       if valid_ctrl?(@@crshader_menu_btn)
         @@crshader_menu_btn.not_nil!.call("queue_free") rescue nil
       end
@@ -909,8 +1102,11 @@ module CrShader
         end
       end
       @@tab_editors.clear
+      @@last_companion_lookup_tip = "\x00"
+      @@template_submenu = nil
       @@crshader_menu_btn = nil
       @@edit_source_btn = nil
+      @@file_menu_btn = nil
       @@shader_dock = nil
       @@shader_list = nil
       @@shader_tabs = nil

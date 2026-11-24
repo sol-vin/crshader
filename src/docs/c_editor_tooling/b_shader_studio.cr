@@ -7,13 +7,13 @@
 module CrShader
   module Docs
     module C_EDITOR_TOOLING
-      # # Godot 4.8 Shader Editor Tab & CRShader Studio
+      # # Godot 4.8 Shader Editor Tab, New Shader (Ctrl+N) & Templates
       #
-      # CRShader integrates directly into Godot 4.8's built-in bottom **Shader Editor** dock via
-      # `CrShader::ShaderEditorIntegration` and `CrShader::CrShaderTabEditor`, while also retaining
-      # `CrShader::CrShaderStudioPanel` for standalone showcase apps. Double-clicking any `.crshader`
-      # file in the FileSystem dock or selecting it from the `🔮 CRShader` menu opens a split-pane
-      # `.crshader` editor right inside the **Shader Editor** tab.
+      # CRShader integrates directly into Godot 4.8's built-in bottom **Shader Editor** dock and **Create Shader** dialog (`Ctrl+N`)
+      # via `CrShader::ShaderCreateDialogIntegration`, `CrShader::ShaderEditorIntegration`, and `CrShader::CrShaderTabEditor`,
+      # while retaining `CrShader::CrShaderStudioPanel` for standalone showcase apps. Pressing `Ctrl+N` in the Shader Editor
+      # (or choosing **New Shader...** in the FileSystem dock or a `ShaderMaterial` Inspector) exposes **CRShader** right inside
+      # the `Type:` dropdown alongside 30+ curated templates across all 7 shader modes.
       #
       # ### Executive Summary & Key Topics
       #
@@ -27,9 +27,9 @@ module CrShader
       #   </thead>
       #   <tbody>
       #     <tr>
-      #       <td><strong>Native Shader Editor Tab Integration</strong></td>
+      #       <td><strong>Ctrl+N New Shader Dialog & Built-in Templates</strong></td>
       #       <td><code>.topic_01_dock_layout</code></td>
-      #       <td>Editing .crshader files directly inside Godot 4.8's Shader Editor dock.</td>
+      #       <td>Creating .crshader files with curated templates directly from Godot's Create Shader dialog.</td>
       #     </tr>
       #     <tr>
       #       <td><strong>Multi-Target emit_target Compilation & Live Sync</strong></td>
@@ -40,19 +40,20 @@ module CrShader
       # </table>
       #
       # ### Related Guides & Source References
+      # - src/crshader/editor/shader_create_dialog_integration.cr
+      # - src/crshader/templates.cr
       # - src/crshader/editor/shader_editor_integration.cr
       # - src/crshader/addon.cr
-      # - src/crshader/editor/shader_studio.cr
       #
       module B_SHADER_STUDIO
-        # **Native Shader Editor Tab Integration**: Editing .crshader files directly inside Godot 4.8's Shader Editor dock.
+        # **Ctrl+N New Shader Dialog & Built-in Templates**: Creating .crshader files with curated templates directly from Godot's Create Shader dialog.
         #
         # When `res://addons/crshader/plugin.cfg` is enabled (either standalone or compiled into a single-GC
-        # Lapis host via `require "crshader/addon"`), `CrShaderPlugin` hooks into Godot's **Shader Editor**:
+        # Lapis host via `require "crshader/addon"`), `CrShaderPlugin` augments Godot's **Shader Editor** and **Create Shader** dialog:
         #
-        # 1. **In-Place `.crshader` Tabs**: Opening a `.crshader` resource upgrades its Shader Editor tab slot with `CrShaderTabEditor`, preventing raw GDShader parse errors on Crystal DSL syntax.
-        # 2. **Toolbar Menu & Companion Jump**: Adds a `🔮 CRShader` dropdown to open or bulk-compile all project `.crshader` files, plus a contextual `🔮 Edit <name>.crshader` button whenever viewing a generated `.gdshader`, `.gdshaderinc`, or `.glsl` file.
-        # 3. **Live Split Preview & Trait Inserter**: Displays real-time transpiled output on the right (including multi-target `emit_target` previews) with `Ctrl+S` disk and in-memory `ResourceLoader` hot-reload.
+        # 1. **Native `Ctrl+N` (`Create Shader`) Integration**: Selecting **CRShader** in `Type:` unlocks all 7 modes (**Spatial**, **Canvas Item**, **Particles**, **Sky**, **Fog**, **Compute**, and **Shader Include**) and populates `Template:` with over 30 ready-to-compile templates (Toon/Cel, Dissolve & Hit Flash, Foliage Wind, Water Waves, Hologram Shield, Triplanar, 2D Sprite Outline, UI SDF Card, Screen Post-Process, CRT Dither, Vortex Particles, Sunset Starfield, Rolling Mist, Compositor Outlines, Compute Particle Sim, and OOP `.gdshaderinc` libraries).
+        # 2. **In-Place `.crshader` Tabs & Template Picker**: Opening or creating a `.crshader` resource upgrades its Shader Editor tab slot with `CrShaderTabEditor`, featuring a `📋 Template...` picker, `🧩 Insert Trait...` dropdown, syntax highlighting, and live split preview.
+        # 3. **Toolbar Menu & Companion Jump**: Adds a `🔮 CRShader` dropdown (`➕ New CRShader...`, `📋 New CRShader from Template`, project `.crshader` files, and bulk compile) plus a contextual `🔮 Edit <name>.crshader` button whenever viewing a generated `.gdshader`, `.gdshaderinc`, or `.glsl` file.
         #
         # #### Working Examples
         #

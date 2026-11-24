@@ -89,8 +89,8 @@ module CrShader
   #     </tr>
   #     <tr>
   #       <td><code>B_SHADER_STUDIO</code></td>
-  #       <td><strong>Godot 4.8 Shader Editor Tab & CRShader Studio</strong></td>
-  #       <td>Native editing inside Godot's built-in Shader Editor dock, multi-target emit_target syncing, and host addon integration.</td>
+  #       <td><strong>Godot 4.8 Shader Editor Tab, New Shader (Ctrl+N) & Templates</strong></td>
+  #       <td>Native CRShader creation via Ctrl+N (New Shader), 30+ built-in templates, split-pane Shader Editor tabs, and multi-target emit_target syncing.</td>
   #     </tr>
   #     <tr>
   #       <td><code>C_CLI_AND_STUBS</code></td>
@@ -169,7 +169,7 @@ module CrShader
     #
     # ##### 3. Editor tooling (`C_EDITOR_TOOLING`)
     # - `C_EDITOR_TOOLING::A_IN_EDITOR_HIGHLIGHTER`: **CRShader & Target Syntax Highlighting** &mdash; How CRShader tokenizes .crshader DSL and compiled .gdshader/.glsl targets with high-contrast dark-theme palettes.
-    # - `C_EDITOR_TOOLING::B_SHADER_STUDIO`: **Godot 4.8 Shader Editor Tab & CRShader Studio** &mdash; Native editing inside Godot's built-in Shader Editor dock, multi-target emit_target syncing, and host addon integration.
+    # - `C_EDITOR_TOOLING::B_SHADER_STUDIO`: **Godot 4.8 Shader Editor Tab, New Shader (Ctrl+N) & Templates** &mdash; Native CRShader creation via Ctrl+N (New Shader), 30+ built-in templates, split-pane Shader Editor tabs, and multi-target emit_target syncing.
     # - `C_EDITOR_TOOLING::C_CLI_AND_STUBS`: **CRShader CLI Tool & IDE Stubs** &mdash; Standalone CLI compiler commands, directory watcher, and Crystal IDE completion stub generation.
     #
     # ##### 4. Showcase and benchmarks (`D_SHOWCASE_AND_BENCHMARKS`)
@@ -198,7 +198,7 @@ module CrShader
     #
     # ##### `C_EDITOR_TOOLING`
     # - `C_EDITOR_TOOLING::A_IN_EDITOR_HIGHLIGHTER`: **CRShader & Target Syntax Highlighting** &mdash; How CRShader tokenizes .crshader DSL and compiled .gdshader/.glsl targets with high-contrast dark-theme palettes.
-    # - `C_EDITOR_TOOLING::B_SHADER_STUDIO`: **Godot 4.8 Shader Editor Tab & CRShader Studio** &mdash; Native editing inside Godot's built-in Shader Editor dock, multi-target emit_target syncing, and host addon integration.
+    # - `C_EDITOR_TOOLING::B_SHADER_STUDIO`: **Godot 4.8 Shader Editor Tab, New Shader (Ctrl+N) & Templates** &mdash; Native CRShader creation via Ctrl+N (New Shader), 30+ built-in templates, split-pane Shader Editor tabs, and multi-target emit_target syncing.
     # - `C_EDITOR_TOOLING::C_CLI_AND_STUBS`: **CRShader CLI Tool & IDE Stubs** &mdash; Standalone CLI compiler commands, directory watcher, and Crystal IDE completion stub generation.
     #
     # ##### `D_SHOWCASE_AND_BENCHMARKS`
