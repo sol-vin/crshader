@@ -1,4 +1,6 @@
 # CARBON CHANGELOG
+## [0.1.71] - 2026-11-27
+---
 ## [0.1.70] - 2026-11-23
 ### ✨ Features & Improvements
 - ✦ **[DSL,STD]** add outline & artist stdlibs, shader builder, variant cache, gdshaderinc emitter, and spatial/compute interop ([`c5a4ee4`](https://github.com/sol-vin/crshader/commit/c5a4ee4))
